@@ -1,0 +1,287 @@
+---
+sidebar_label: '同步机制'
+sidebar_position: 7
+---
+
+# Sync_object
+
+介绍gs中的同步机制。
+
+GS中，锁(Mutex)、信号量（Semaphore）、事件（Event）都属于同步对象（SyncObject）,同步对象被用于在并行逻辑中保证数据完整性、操作原子性或者维持工作的同步和等待关系。所有的同步对象都通过 `sync_object.create_*` 方法进行创建。
+
+
+## mutex
+mutex，即互斥锁。互斥锁在空闲状态下可以使用 `lock` 方法加锁。当锁在一个协程中被锁定时，其他协程对这个锁的加锁操作均会阻塞，直到锁因为 `unlock` 重新回到空闲状态 ( GS的mutex行为类似C++的 recursive_mutex（递归锁），一个协程可以对一个mutex加锁多次，但也需要解锁相同的次数 )。
+
+举个例子：
+
+```cpp title="mutex.gs"
+
+int sum= 0;
+
+private void test_m1(sync_object m)
+{
+    m.lock();       // 加锁
+    sum++;          
+    m.unlock();     // 解锁
+}
+
+private void test_m2(sync_object m)
+{
+    m.lock();       // 加锁
+    sum++;
+    test_m1(m);
+    m.unlock();     // 解锁
+}
+
+private void test_mutex()
+{
+    sum = 0;
+    sync_object m = sync_object.create_mutex();
+
+    m.lock();                                   // 加锁
+    coroutine.create(0, (: test_m1, m : ));     // 创建一个test_m1协程
+    coroutine.sleep(0.01);
+    printf("%d\n", sum);                        // sum = 0，因为m在当前协程加了锁，进入test_m1的时候不能再加锁，互斥。     
+    m.unlock();                                 // 解锁
+
+    coroutine.sleep(0.01);
+    printf("%d\n", sum);                        // sum = 1，m解锁后test_m1可以加锁，继续执行
+
+    coroutine.create(0, (: test_m1, m : ));     // 新创建一个test_m1协程
+    coroutine.sleep(0.01);
+    printf("%d\n", sum);                        // sum = 2，test_m1直接执行加锁，sum++，解锁 
+
+    m.lock();                                   // 加锁
+    coroutine.create(0, (: test_m2, m : ));     // 新创建一个test_m2协程
+    coroutine.sleep(0.01);
+    printf("%d\n", sum);                        // sum = 2，因为m在当前协程加了锁
+    m.unlock();                                 // 解锁
+
+    coroutine.sleep(0.01);
+    printf("%d\n", sum);                        // sum = 4，test_m1和test_m2在同一个协程，可以多重加锁  
+}
+test_mutex();
+```
+
+### mutex常用的外部函数
+
+下面列出mutex类型一些常用的外部函数以及用法。
+
+export const mutex_apis = [
+            {
+                "id": 1,
+                "proto": "sync_object sync_object.create_mutex(string? name = nil)",
+                "desc": "创建互斥锁",
+                "usage": "sync_object m = sync_object.create_mutex()"
+            },
+            {
+                "id": 2,
+                "proto": "int sync_object.delete_mutex(handle mutex_id)",
+                "desc": "删除互斥锁 （新版本的GS中貌似已经废除此方法）",
+                "usage": "int flag = sync_object.delete_mutex(m); // flag = 1"
+            }
+        ];
+
+<ExternalApiTable list={mutex_apis} />
+
+:::note
+
+***第2项返回值应该为bool，以后可能会改***
+
+:::
+
+---
+
+## semaphore
+semaphore，信号量，通常用于在协程之间进行工作同步。可以通过调用 `take` 方法阻塞当前协程，直到接收到另外一个协程调用 `give` 方法发出的信号。一次信号发出只会唤醒一个协程。
+
+信号量应用的例子：
+
+```cpp title="semaphore1.gs"
+sync_object sem = sync_object.create_semaphore();
+
+void sem_give()
+{
+    write(2);
+    sem.give();                                         // 发出信号
+    write(3);
+}
+
+void test_sem()
+{
+    coroutine co = coroutine.create(0, (:sem_give:));   // 创建sem_give协程
+    write(1);                                           
+    sem.take();                                         // 收到信号再执行
+    write(4);
+}
+
+test_sem();                                             // 输出 1234
+
+```
+
+---
+
+```cpp title="semaphore2.gs"
+int sum;
+
+private void take_and_add(sync_object sem)
+{
+    sum -= 1;       // sum = sum - 1
+    sem.take();     // take(), 直到有give()才执行
+    sum += 1;       // sum = sum + 1
+}
+
+private void test_semaphore()
+{
+    sync_object sem = sync_object.create_semaphore();   // 创建信号
+    sum = 0;                                            // 初始化 sum = 0 
+    for(int i = 0 upto 4)                               // 创建5个协程
+        coroutine.create(0, (: take_and_add, sem : ));
+    coroutine.sleep(0.02);
+
+    write(sum, "\n");                                   // sum = -5，因为还没有give(), 所有协程不能执行take()
+
+    
+    for(int i = 0 upto 4)
+    {
+        sem.give();                                     // 每give()一次执行一个协程，区别于事件event
+        coroutine.sleep(0.01);
+        write(sum, "\n");                               // sum = -4, -3, -2, -1, 0
+    }
+    
+    sem.give();                                         // 再多give()一次
+    coroutine.sleep(0.01);
+    write(sum, "\n");                                   // sum = 0, sum不变，因为协程都执行结束了，没有需要take()的协程
+
+    take_and_add(sem);                                  // 现在这个调用有了上面的give(), 无需阻塞
+    write(sum, "\n");                                   // sum = 1
+}
+
+test_semaphore();
+```
+
+
+### semaphore常用的外部函数
+
+下面列出semaphore类型一些常用的外部函数以及用法。
+
+export const semaphore_apis = [
+            {
+                "id": 1,
+                "proto": "sync_object sync_object.create_semaphore(string? name = nil, int max_count = -1)",
+                "desc": "创建信号",
+                "usage": "sync_object sem = sync_object.create_semaphore();"
+            },
+            {
+                "id": 2,
+                "proto": "int sync_object_instance.give()",
+                "desc": "发出信号",
+                "usage": "int sem_give = sem.give(); // sem_give ="
+            },
+            {
+                "id": 3,
+                "proto": "int sync_object_instance.take()",
+                "desc": "收到信号",
+                "usage": "int sem_take = sem.take(); // sem_take ="
+            },
+            {
+                "id": 4,
+                "proto": "int sync_object.delete_semaphore(sync_object sem)",
+                "desc": "删除信号（新版本的GS中貌似已经废除此方法）",
+                "usage": "int falg = sync_object.delete_semaphore(sem); // flag = true"
+            }
+        ];
+
+<ExternalApiTable list={semaphore_apis} />
+
+
+## event
+
+event，事件，与信号量（semaphore）类似，也是用于协程间的进行工作同步。与信号量不同的是，一个事件触发（ `raise` ）时，所有正在等待该事件的协程均会被唤醒。
+
+举个例子：
+```cpp
+int sum = 0;
+
+private void wait_and_add(int index, sync_object evt, sync_object sem_id)
+{
+    sum -= 1;       // sum = sum - 1
+    sem_id.give();  // give()
+    evt.wait();     // 加入阻塞队列，等待执行
+    sum += 2;       // sum = sum + 2
+    sem_id.give();  // give()
+}
+
+private void test_event()
+{
+    sync_object evt = sync_object.create_event();               // 创建事件
+    sum = 0;                                                    // 初始化 sum = 0
+    sync_object sem_id = sync_object.create_semaphore();        // 创建信号 sem_id
+    const int N = 5;
+    for (int i = 1 upto N)                                      // 创建5个协程
+        coroutine.create(0, (: wait_and_add, i, evt, sem_id :));
+    
+    for (int i = 1 upto N)                                      // 等待协程开始执行
+        sem_id.take();
+
+                                                                // 此时所有事件都被阻塞
+    write(sum, "\n");                                           // sum = -5
+    
+    evt.raise();                                                // 执行事件，事件执行一次，所有协程开始执行
+    
+    for(int i = 1 upto N)                                       // 等待所有协程结束
+        sem_id.take();
+
+    coroutine.sleep(0.1);                                       // 保证所有协程结束
+
+    write(sum, "\n");                                           // sum = 5
+}
+
+test_event();
+```
+
+### event常用的外部函数
+
+下面列出event类型一些常用的外部函数以及用法。
+
+export const event_apis = [
+            {
+                "id": 1,
+                "proto": "sync_object sync_object.create_event(string? name = nil)",
+                "desc": "创建事件",
+                "usage": "sync_object evt = sync_object.create_event(\"hello\");"
+            },
+            {
+                "id": 2,
+                "proto": "int sync_object_instance.wait(int/real wait_time = -1)",
+                "desc": "等待事件",
+                "usage": "int val = evt.wait(); // 等待事件evt"
+            },
+            {
+                "id": 3,
+                "proto": "int sync_object_instance.raise()",
+                "desc": "执行事件",
+                "usage": "int val = evt.raise(); // 执行事件evt"
+            },
+            {
+                "id": 4,
+                "proto": "int wait_for_multiple_events(array event_ids, int/real wait_time = -1)",
+                "desc": "等待多个事件",
+                "usage": "int val = wait_for_multiple_events([evt])"
+            },
+            {
+                "id": 5,
+                "proto": "int sync_object_instance.reset()",
+                "desc": "重置事件",
+                "usage": "int val = evt.reset(); // 重置事件"
+            },
+            {
+                "id": 6,
+                "proto": "int sync_object.delete_event(sync_object evt)",
+                "desc": "删除事件",
+                "usage": "int val = sync_object.delete_event(evt); // 删除evt（新版本的GS中貌似已经废除此方法）"
+            }
+        ];
+
+<ExternalApiTable list={event_apis} />

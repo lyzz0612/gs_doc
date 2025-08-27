@@ -1,0 +1,232 @@
+# 数据类型
+---
+介绍GS的基本数据类型。
+
+## GS数据类型简介
+
+### 基本类型
+
+<CardSection
+  id="VariableTypes"
+  description="GS是面向对象的脚本语言，语法类似于C，其内置了几种数据类型"
+>
+  <Card 
+    title="空类型" 
+    to="./Variables_nil_void"
+    description="两个空类型（nil, void）"
+  />
+  <Card 
+    title="数值类型" 
+    to="./Variables_bool_int_float"
+    description="三个数值类型（bool, int, float）"
+  />
+  <Card 
+    title="串类型" 
+    to="./Variables_string_buffer"
+    description="两个串类型（string, buffer）"
+  />
+  <Card 
+    title="容器类型" 
+    to="./Variables_array_map"
+    description="两个容器类型（array, map）"
+  />
+  <Card 
+    title="可扩充类型" 
+    to="./Variables_handle"
+    description="可扩充类型（handle）"
+  />
+  <Card 
+    title="结构体类型" 
+    to="./Variables_struct"
+    description="结构体类型（struct）"
+  />
+</CardSection>
+
+:::info 
+
+所有的类型可以视为继承自混合类型mixed，
+而枚举类型（enum）继承自int，扩充类型object则继承自handle。
+
+:::
+
+:::note
+
+<CardSection title="其他类型" id="OtherVariableTypes">
+  <Card 
+    title="弱引用表" 
+    description="weak_table是map的子类型，它以弱引用的方式持有键（和值）"
+  />
+  <Card 
+    title="函数指针" 
+    description="即function类型，类似于C++里面的（void*) func"
+  />
+  <Card 
+    title="类" 
+    description="class_map类型主要实现了类似C++/java的类"
+  />
+</CardSection>
+
+:::
+
+### GS内置类型继承关系示意图
+```
+mixed -+-- nil
+       |
+       +-- void
+       |
+       +-- int -+-- enum -+-- bool
+       |
+       +-- float
+       |
+       +-- string
+       |
+       +-- buffer
+       |
+       +-- array
+       |
+       +-- map -+-- class_map
+       |
+       +-- function
+       |
+       +-- handle -+-- object
+       |           |
+       |           +-- program
+       |           |
+       |           +-- domain
+       |           |
+       |           +-- ref_value
+       |           |
+       |           +-- coroutine
+       |           |
+       |           +-- timer
+       |           |
+       |           +-- socket
+       |           |
+       |           +-- share_value
+       |           |
+       |           +-- sync_object
+       |           |
+       |           +-- queue
+       |           |
+       |           +-- file
+       |           |
+       |           +-- socket
+       |           |
+       |           +-- iterator
+       |           |
+       |           +-- archive
+       |           |
+       |           +-- weak_table
+       |
+       +-- raw_pointer -+-- sockaddr
+
+```
+### 类型的定义
+数据类型的基本语法格式：
+```
+value_type val = values;
+```
+
+**格式解释**：
+
+* `value_type`表示`val`的数值类型
+  1. `value_type`的类型是`mixed`，所有已有数据类型或者自定义数据类型都可以作为`value_type`
+
+* `val`为变量的名字，它必须满足以下格式
+  1. 由字母或者下划线开头
+  2. 仅由字母，数字和下划线组成
+  3. 不能与数据类型名或者系统函数名相同
+
+* *values*为`val`初始化的数值，它是可选的
+  1. 必须满足*values*的数据类型与`value_type`相一致
+  2. *values*可以是强制类型转换过来的值
+
+### 类型的判断
+
+GS中内置了一个外部函数，可以对mixed类型进行判断，函数原型如下：
+
+```cpp
+string mixed.type_name()// return 类型的string格式
+```
+
+基本用法：
+
+```cpp
+int i = 1234;
+write(i.type_name());   // 输出 "int"
+array arr = [1, "hello", 3.14];
+write(arr.type_name()); // 输出 "array"
+```
+
+#### 类型的强制转换
+
+bool 强制转换成 int时，true 被转换为整型数字 1，false 被转换为整型数字 0，示例如下：
+
+```cpp
+bool flag = true;
+write("flag == ",(int)flag, "\n");
+write("!flag == ",(int)!flag, "\n");
+```
+
+输出
+
+```bash
+flag == 1
+!flag == 0
+```
+
+**int强制转换成bool**
+
+只有int 为0或1时，才会转为bool类型，其他情况保持int原值。
+
+```cpp
+int n = 1;
+int m = 2;
+int l = 0;
+int k = -1;
+write("\nl=0,bool=",(bool)l);
+write("\nm=2,bool=",(bool)m);
+write("\nn=1,bool=",(bool)n);
+write("\nk=-1,bool=",(bool)k);
+```
+
+输出
+
+```bash
+l=0,bool=false
+m=2,bool=2
+n=1,bool=true
+k=-1,bool=-1
+```
+
+**float转为int**
+
+会发生截断，取整数值，不存在四舍五入
+
+**string转为int**
+
+```cpp
+ string str = "1024";
+ int val = int.parse(str); // val = 1024
+```
+
+**int转为string**
+
+```cpp
+ int val = 1024;
+ string str = val.to_string(); // str = "1024"
+```
+
+**string转为float**
+
+```cpp
+string str = "3.14";
+float val = float.parse(str); // val = 3.14
+```
+
+**float转为string**
+
+```cpp
+float val = 3.14;
+string str = val.to_string(); // str = "3.14"
+```

@@ -1,0 +1,119 @@
+---
+sidebar_label: '归档'
+sidebar_position: 13
+---
+
+# Archive
+
+archive是一种归档类型，用于将一个文件或文件夹归档为一个archive文件。
+
+一个archive类型的对象对应一个archive文件。
+
+archive文件有zip和pak两种格式，在创建archive对象时根据文件名后缀确定。
+
+
+举个例子：
+
+```cpp title="archive_test.gs"
+archive arch2 = archive.find("./archive3.pak",true,"wr");
+
+arch2.pack_tree_files({"etc":{"test.xls":"/etc/test.xls"}});
+
+buffer buf = arch2.read_file("/etc/test.xls");
+
+array dir = arch2.get_dir("/");
+
+// [ /* sizeof() == 1 */
+//     "etc",
+// ]
+
+arch2.pack_tree_files({"etc_bak":{"test.xls":"/etc_bak/test.xls","test_big.xls":"/etc_bak/test_big.xls"}});
+
+arch2.dump();
+/*
+|+ /
+  |+ /etc_bak/
+    |- test.xls
+    |- test_big.xls
+*/
+
+array dir = arch2.get_dir("/etc_bak/");
+
+// [ /* sizeof() == 2 */
+//     "test.xls",
+//     "test_big.xls",
+// ]
+
+dir = arch2.get_dir("/etc_bak/",true);
+
+// [ /* sizeof() == 2 */
+//     { /* sizeof() == 3 */
+//         "name" : "test.xls",
+//         "mtime" : 1623227475,
+//         "is_dir" : false,
+//     },
+//     { /* sizeof() == 3 */
+//         "name" : "test_big.xls",
+//         "mtime" : 1623227475,
+//         "is_dir" : false,
+//     },
+// ]
+
+```
+
+## archive常用的外部函数
+
+下面列出archive类型一些常用的外部函数以及用法。
+
+export const archive_apis = [
+            {
+                "id": 1,
+                "proto": "archive archive.find(string path, bool auto_create = false, string mode = \"\")",
+                "desc": "指定路径文件名寻找archive文件并返回archive对象， auto_create决定当未找到时是否自动创建",
+                "usage": "archive arch = archive.find(\"./archive.zip\");"
+            },
+            {
+                "id": 2,
+                "proto": "archive archive.open(string path, string mode)",
+                "desc": "根据路径文件名打开一个archive文件并返回archive对象，不允许重复打开，若文件不存在则创建",
+                "usage": "archive arch = archive.open(\"./archive.zip\", \"wb\");"
+            },
+            {
+                "id": 3,
+                "proto": "array archive_instance.get_dir(string path, bool detail = false)",
+                "desc": "获取archive中指定目录下的文件或文件夹列表",
+                "usage": "array a = arch.get_dir(\"/\");"
+            },
+            {
+                "id": 4,
+                "proto": "buffer archive_instance.read_file(string path)",
+                "desc": "获取archive中的文件，以buffer返回文件中的数据，path路径是archive中的相对路径",
+                "usage": "buffer test = arch.read_file(\"/etc_bak/test.xls\")；"
+            },
+            {
+                "id": 5,
+                "proto": "bool archive_instance.write_file(string path, buffer buf)",
+                "desc": "暂不支持",
+                "usage": ""
+            },
+            {
+                "id": 6,
+                "proto": "void archive_instance.pack_tree_files( map tree_files)",
+                "desc": "将用map组织的文件结构打包进archive中",
+                "usage": "arch.pack_tree_files({\"etc_bak\":{\"test.xls\":\"/etc_bak/test.xls\",\"test_big.xls\":\"/etc_bak/test_big.xls\"}});"
+            },
+            {
+                "id": 7,
+                "proto": "void archive_instance.dump()",
+                "desc": "dump整个archive的组织结构",
+                "usage": "arch.dump();"
+            },
+            {
+                "id": 8,
+                "proto": "void archive_instance.flush()",
+                "desc": "将所有变化保存到archive文件中",
+                "usage": "arch.flush();"
+            }
+        ];
+
+<ExternalApiTable list={archive_apis} />

@@ -1,0 +1,123 @@
+---
+sidebar_label: 'Program'
+sidebar_position: 1
+---
+
+# Program
+
+## program的概念
+GS中的program和object的关系类似于C++的class和class派生的对象, 一个gs文件可以通过new_object生成很多对象，但是始终只有一个program
+
+## program的创建
+```cpp
+int compile_program(string file_name, mixed file_content = nil, bool force_recompile = false, bool compile_for_patch = false)
+```
+通过compile_program方法可以动态编译一个program，将文件读取导content里然后执行编译，动态编译之后可以实现对该program派生的object进行更新，例如我们的内置方法monkey.patch(program)就是通过这个原理来更新所有object
+
+## program例子简单讲解
+如何获取一个对象的program  
+```cpp
+program ent_program = program.find_by_name(object_name);   // 通过对象名获取program
+program ent_program = object.get_program();                // 通过对象获取program
+```
+获取这个对象包含的组件
+```cpp
+ent_program.get_components();   // 包含组件列表
+```
+获取这个对象包含的变量
+```cpp
+ent_program.get_object_vars();   // 包含变量列表
+```
+获取这个对象包含的函数
+```cpp
+ent_program.get_functions();   // 包含函数列表
+```
+
+判断一个对象是否拥有Item组件：
+```cpp
+program ent_program = program.find_by_name("common/Node.gs");
+
+if (!ent_program)
+{
+    error("对应对象不存在!");
+    return false;
+}
+
+if (!ent_program.get_component(Item))
+{
+    error("It has no Item component!");
+    return false;
+}
+else
+    return true;
+
+```
+
+## program常用的外部函数
+
+下面列出program类型一些常用的外部函数以及用法。
+
+export const program_apis = [
+            {
+                "id": 1,
+                "proto": "program object.get_program()",
+                "desc": "通过对象获取program",
+                "usage": "program ent_program = object.get_program();"
+            },
+            {
+                "id": 2,
+                "proto": "program find_by_name(string name)",
+                "desc": "通过对象名获取program",
+                "usage": "program ent_program = program.find_by_name(\"common/User.gs\");"
+            },
+            {
+                "id": 3,
+                "proto": "string get_name()",
+                "desc": "获取program管理的对象名称",
+                "usage": "string obname = program.get_name();"
+            },
+            {
+                "id": 4,
+                "proto": "program get_component(string name)",
+                "desc": "获取该对象包含的指定组件",
+                "usage": "program comp = program.get_component(\"common/Session.gs\");"
+            },
+            {
+                "id": 5,
+                "proto": "array get_components()",
+                "desc": "获取该对象包含的所有组件",
+                "usage": "array comps = program.get_components();"
+            },
+            {
+                "id": 6,
+                "proto": "array get_functions()",
+                "desc": "获取该对象包含的所有函数",
+                "usage": "array funcs = program.get_functions();"
+            },
+            {
+                "id": 7,
+                "proto": "array get_object_vars()",
+                "desc": "获取该对象包含的所有函数",
+                "usage": "array vars = program.get_object_vars();"
+            },
+            {
+                "id": 8,
+                "proto": "array get_depend_programs()",
+                "desc": "获取该对象依赖的program列表",
+                "usage": "array programs = program.get_depend_programs();"
+            },
+            {
+                "id": 9,
+                "proto": "bool has_same_ob_vars(program p)",
+                "desc": "两个program是否有相同的变量数量，相同的名称，相同的基础类型和子类型",
+                "usage": "bool flag = p1.has_same_ob_vars(p2);"
+            },
+            {
+                "id": 10,
+                "proto": "array get_depend_objects()",
+                "desc": "获取所有依赖这个program作为组件的object列表",
+                "usage": "array obs = program.get_depend_objects();"
+            }
+        ];
+
+<ExternalApiTable list={program_apis} />

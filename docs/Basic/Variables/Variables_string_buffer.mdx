@@ -1,0 +1,337 @@
+---
+sidebar_label: '串类型（string, buffer）'
+sidebar_position: 4
+---
+
+# 串类型（string, buffer）
+string为字符串，buffer解释为缓冲区，他们都是连续存储并且存储内存都是动态分配的。
+## string
+string可以理解为一个连续存放字符的容器，它和buffer的区别是string字符串可能会放在字符串池中，且无法对`string[idx]`单个字符进行修改
+string初始化，以及一些简单的符号运算：
+```cpp
+string str = "Hello World";         // 使用双引号，只能包括一行字符串
+
+string str0 = """P                  // 使用"""P ... """P; 的方式可以定义多行任意格式字符串
+Hello World!                        // 其中P可以为[a-z]和[A-Z]，任意字母无差别，但要保证前后一致。
+This is my first program,
+    thank you!
+"""P;
+
+string str1 = "Hello", str2 = " World";
+string add_str = str1 + str2;       // add_str为"Hello World"
+printf("%c",add_str[0]);            // 输出 H
+
+```
+### 从设备输入数据
+```cpp
+mixed input_string(string prompt = EMPTY_STRING, bool echo = true, int max_size= 4096);  // 原型
+// 返回值如果是nil表示EOF，数字表示出错，否则就是string
+
+import gs.lang.io
+
+string str = "";
+array lines = [];       // 行数
+int total_size = 0;     // 总长度
+while (str = input_string("", false, 1024*1024))
+{
+    lines << [str];
+    total_size += str.length();
+}
+```
+
+* string可以通过切片语法获取子串。
+
+```cpp
+string str = "hello";
+write(str[0..4]); // hello
+write(str[0..2]); // hel
+write(str[0..0]); // h
+
+// <n 代表从右边向左边数，第n个
+write(str[0..<1]); // hello
+write(str[1..<3]); // el
+
+```
+
+---
+
+### string常用的外部函数
+
+
+下面列出string类型一些常用的外部函数以及用法。
+
+export const string_apis = [
+            {
+                "id": 1,
+                "proto": "string int_instance.to_string()",
+                "desc": "int转成string",
+                "usage": "int val = 1024;\nstring str = val.to_string(); // str = \"1024\""
+            },
+            {
+                "id": 2,
+                "proto": "string float_instance.to_string()",
+                "desc": "float转成string",
+                "usage": "float pi = 3.14;\nstring str = pi.to_string();  //str= \"3.14"
+            },
+            {
+                "id": 3,
+                "proto": "string bigin_instancet.to_string()",
+                "desc": "bigint转成string",
+                "usage": "bigint bi = bigint(\"10000\");\nstring str = bi.to_string(); // str为\"10000L\""
+            },
+            {
+                "id": 4,
+                "proto": "int string_instance.length()",
+                "desc": "得到string长度",
+                "usage": "string str = \"Hello World\";\nint length = str.length(); // length = 11"
+            },
+            {
+                "id": 5,
+                "proto": "string string_instance.to_lower()",
+                "desc": "字母转小写",
+                "usage": "string str = \"Hello World\";\nstr = str.to_lower(); // str = \"hello world\""
+            },
+            {
+                "id": 6,
+                "proto": "string string_instance.to_upper()",
+                "desc": "字母转大写",
+                "usage": "string str = \"Hello World\";\nstr = str.to_upper(); // str = \"HELLO WORLD\""
+            },
+            {
+                "id": 7,
+                "proto": "bool is_string(srting str)",
+                "desc": "是否为string",
+                "usage": "string str = \"Hello World\";\nbool flag = is_string(str); // flag = true"
+            },
+            {
+                "id": 8,
+                "proto": "int strcmp(string s1, string s2) // s1<s2 => -1;",
+                "desc": "比较",
+                "usage": "string s1 = \"abc\", s2 = \"abd\";\nint val = strcmp(s1, s2); // val = -1"
+            },
+            {
+                "id": 9,
+                "proto": "int stricmp(string s1, string s2)",
+                "desc": "转小写比较",
+                "usage": "string s1 = \"aBc\", s2 = \"abC\";\nint val = stricmp(s1, s2); // val = 0"
+            },
+            {
+                "id": 10,
+                "proto": "int strdiff(string s1, string s2)",
+                "desc": "相同位置不同字符个数",
+                "usage": "string s1 = \"31243\", s2 = \"1234\";\nint val = strdiff(s1,s2); // val = 4"
+            },
+            {
+                "id": 11,
+                "proto": "int strsrch(string s1, int/string s2, bool reverse = false)",
+                "desc": "查找",
+                "usage": "string s1 = \"hello hello world\", s2 = \"lo\";\nint pos = strsrch(s1, s2); // pos = 3"
+            },
+            {
+                "id": 12,
+                "proto": "string string_instance.trim(int option = 3, string filter = \" \")",
+                "desc": "递归过滤前后filter",
+                "usage": "string str = \"abab hello world abab\";\nstr = str.trim(1, \"ab\"); // str = \" hello world abab\""
+            },
+            {
+                "id": 13,
+                "proto": "array string_instance.explode(string delim = \"\")",
+                "desc": "分割字符串",
+                "usage": "string str = \"hello world\";\narray arr = str.explode(\" \"); // arr = [\"hello\", \"world\"]"
+            },
+            {
+                "id": 14,
+                "proto": "string string_instance.get_range(int pos. int count = -1)",
+                "desc": "提取子串",
+                "usage": "string str = \"hello world\";\nstr = str.get_range(3, 2); // str = \"lo\""
+            },
+            {
+                "id": 15,
+                "proto": "mixed string_instance.replace(string s1, string s2)",
+                "desc": "替代子串",
+                "usage": "string str = \"hello hello world\";\nstr = str.replace(\"ello\",\"i\"); // str = \"hi hi world\""
+            },
+            {
+                "id": 16,
+                "proto": "string save_string(mixed val)",
+                "desc": "使用string保存数据",
+                "usage": "array arr = [1, \"hello\", 3.14];\nstring str = save_string(arr); // str = \"[1,\"hello\",3.14000]\""
+            },
+            {
+                "id": 17,
+                "proto": "string sprintf(string str, ...)",
+                "desc": "获取输出字符流",
+                "usage": "string str = sprintf(\"%O\", true); // str = \"true\""
+            },
+            {
+                "id": 18,
+                "proto": "array sscanf(string val, string fmt)",
+                "desc": "获取输入字符流",
+                "usage": "array arr = sscanf(\"g1b2i3ts\", \"g%db%*si%cts\"); // arr = [3, 1, 51]"
+            },
+            {
+                "id": 19,
+                "proto": "bool string_instance.ends_with(string s1)",
+                "desc": "是否以s为结尾",
+                "usage": "string str = \"hello world\";\nbool flag = str.ends_with(\"ld\"); // flag = true"
+            },
+            {
+                "id": 20,
+                "proto": "bool string_instance.starts_with(string s1)",
+                "desc": "是否以s为开始",
+                "usage": "string str = \"hello world\";\nbool flag = str.starts_with(\"hel\"); // flag = true"
+            },
+            {
+                "id": 21,
+                "proto": "bool string_instance.isupper()",
+                "desc": "字母是否都是大写",
+                "usage": "string str = \"HELLO WORLD\";\nbool flag = str.isupper(); // flag = true"
+            },
+            {
+                "id": 22,
+                "proto": "bool string_instance.islower()",
+                "desc": "字母是否都是小写",
+                "usage": "string str = \"hello world\";\nbool flag = str.islower(); // flag = true"
+            },
+            {
+                "id": 23,
+                "proto": "int string_instance.index_of(string str)",
+                "desc": "获取子串的索引(顺序)",
+                "usage": "string str = \"hello world\";\nint index = str.index_of(\"o\"); // index = 4"
+            },
+            {
+                "id": 24,
+                "proto": "int string_instance.rindex_of(string str)",
+                "desc": "获取子串的索引(逆序)",
+                "usage": "string str = \"hello world\";\nint index = str.rindex_of(\"o\"); // index = 7"
+            }
+        ];
+
+<ExternalApiTable list={string_apis} />
+
+---
+
+:::tip 注
+
+**表格第12项参数：option：1，2，3分别表示left，right，both size；filter表示过滤因子**
+
+:::
+
+## buffer
+buffer解释为缓存，其内部维持一个连续的线性储存空间。可以用类似数组索引的方式访问buffer中储存的字节。
+
+向buffer的每个字节写入的数值范围是 0~255（即无符号的一字节整数）。尝试写入超出范围的数值将抛出异常
+
+```cpp
+string add_string()
+{
+    string result = "";
+    for(int i = 0;i < n;i ++)
+        result += str[i];
+    return result;
+}
+```
+当执行这个程序的时候，for循环会不断地构造一个新的string对象然后赋给result，然而我们只需要最后一个result的结果，
+中间过程中的9个string对象都是浪费内存。
+如果我们使用buffer的话，每次修改操作只会在原来的对象中操作，不会生成新的对象，这样也就起到了节省内存空间的效果了。
+
+
+buffer初始化，以及一些简单的符号运算：
+```cpp
+buffer buf = (buffer)"Hello World"; // 初始化buf
+buffer buf1 = (buffer)"Hello", buf2 = (buffer)" World";
+buffer add_buf = buf1 + buf2; // add_buf为"Hello World"
+write(add_buf[0]);   // 输出 72 ('H'的ASCII)
+```
+
+---
+
+### buffer常用的外部函数
+
+
+下面列出buffer类型一些常用的外部函数以及用法。
+
+export const buffer_apis = [
+            {
+                "id": 1,
+                "proto": "buffer buffer.allocate(int size)",
+                "desc": "分配空间",
+                "usage": "buffer buf = buffer.allocate(6); // buf.length() = 6"
+            },
+            {
+                "id": 2,
+                "proto": "void buffer_instance.clear()",
+                "desc": "清除",
+                "usage": "buffer buf = buffer.allocate(6);\nbuf.clear(); // buf.length() = 0"
+            },
+            {
+                "id": 3,
+                "proto": "void buffer_instance.delete_at(int pos, int num = 1)",
+                "desc": "删除",
+                "usage": "buffer buf = buffer.allocate(0);\nbuf << \"hello world\";\nbuf.delete_at(1,4); // buf = \"h world\""
+            },
+            {
+                "id": 4,
+                "proto": "int buffer_instance.find(mixed val)",
+                "desc": "查找",
+                "usage": "buffer buf = (buffer)\"hello world\";\nint index = buf.find(\"wo\"); // index = 6"
+            },
+            {
+                "id": 5,
+                "proto": "mixed buffer_instance.get(int pos)",
+                "desc": "取值",
+                "usage": "buffer buf = (buffer)\"hello world\";\nmixed val = buf.get(1); // val = 101 ('e'的ASCII)"
+            },
+            {
+                "id": 6,
+                "proto": "buffer buffer_instance.get_range(int pos, int count = -1)",
+                "desc": "取子buffer",
+                "usage": "buffer buf = (buffer)\"hello world\";\nbuffer child = buf.get_range(6,3); // child = \"wor\""
+            },
+            {
+                "id": 7,
+                "proto": "void buffer_instance.insert(int pos, mixed val)",
+                "desc": "插入",
+                "usage": "buffer buf = buffer.allocate(0);\nbuf << \"hello world\";\nbuf.insert(6,\"hi \"); // buf = \"hello hi world\""
+            },
+            {
+                "id": 8,
+                "proto": "void buffer_instance.push_back(mixed val)",
+                "desc": "往后插入",
+                "usage": "buffer buf = buffer.allocate(0);\nbuf << \"hello world\";\nbuf.push_back(\"!\"); // buf = \"hello world!\""
+            },
+            {
+                "id": 9,
+                "proto": "void buffer_instance.set(int pos, mixed val)",
+                "desc": "赋值",
+                "usage": "buffer buf = buffer.allocate(0);\nbuf << 10; buf.set(0, 1); // buf = 1"
+            },
+            {
+                "id": 10,
+                "proto": "string buffer_instance.to_hex()",
+                "desc": "转成十六进制串",
+                "usage": "buffer buf = (buffer)\"abcd\";\nstring str = buf.to_hex(); // str = \"61626364\""
+            },
+            {
+                "id": 11,
+                "proto": "buffer save_buffer(mixed val, int option_flag = 0)",
+                "desc": "保存",
+                "usage": "buffer buf = save_buffer(\"hello world\"); // buf = \"hello world\""
+            },
+            {
+                "id": 12,
+                "proto": "bool is_buffer(mixed val)",
+                "desc": "是否为buffer",
+                "usage": "buffer buf = (buffer)\"hello world\";\nbool flag = is_buffer(buf); // flag = true"
+            },
+            {
+                "id": 13,
+                "proto": "void buffer.copy(buffer dst, int pos, buffer src, int start = 0, int copy_len = 2^63 - 1)",
+                "desc": "复制",
+                "usage": "buffer buf = (buffer)\"hello world\";\nbuffer buf1 = buffer.allocate(11);\nbuffer.copy(buf1, 0, buf);// buf1 = \"hello world\""
+            }
+        ];
+
+<ExternalApiTable list={buffer_apis} />
+
+---

@@ -1,0 +1,152 @@
+---
+sidebar_label: '网络套接字'
+sidebar_position: 10
+---
+
+
+# Socket
+
+网络套接字类型，派生自handle，封装了底层socket的接口，用于支持协程间的socket通信。
+
+
+举个例子：
+
+```cpp title="socket.gs"
+const int PORT = 4678;
+int size = 0;
+int sum = 0;
+
+handle sem_id = sync_object.create_semaphore();
+
+// Connect to server & receve data until peer closed
+void start_client()
+{
+    handle fd = socket.create();
+    fd.connect("127.0.0.1", PORT);
+    for (;;)
+    {
+        let int ret, buffer buf = fd.recv(1024);
+        if (ret <= 0)
+            break;
+        size += ret;
+        for (int i = 0 upto buf.length() - 1)
+            if (buf[i] >= '0' && buf[i] <= '9')
+                sum += buf[i];
+    }
+    fd.close();
+    sem_id.give();
+}
+
+string data = __FILE__ + "1234567890";
+data = data + data + data + data + data;
+data = data + data;
+const int N = 3000;
+
+void start_server()
+{
+	handle sfd = socket.create();
+	sfd.set_opt(SockOptLevel.SOCKET, SockOpt.REUSEADDR, 1);
+	sfd.bind(SockParam.INADDR_ANY, PORT);
+	sfd.listen(64);
+
+	// Send N times to single client
+	let handle cfd, int ip = sfd.accept();
+	for(int i = 1 upto N)
+		cfd.send(data);
+	cfd.close();
+	sem_id.take();	
+	
+    printf("sum = %d,",sum);
+    printf("size = %d\n", size);
+}
+
+void test()
+{
+	coroutine.create(0, "start_server");
+	
+	coroutine.create(0, "start_client");
+}
+
+test();
+```
+
+## socket常用的外部函数
+
+下面列出socket类型一些常用的外部函数以及用法。
+
+export const socket_apis = [
+            {
+                "id": 1,
+                "proto": "socket socket.create(int af = 0, int type = 0)",
+                "desc": "创建socket",
+                "usage": "socket sfd = socket.create(SockDomain.AF_INET, SockType.SOCK_STREAM);"
+            },
+            {
+                "id": 2,
+                "proto": "array socket_instance.accept()",
+                "desc": "接收来自监听端口的链接",
+                "usage": "socket cfd = sfd.accept()；//成功返回连接的socket、ip、port，失败返回无效socket"
+            },
+            {
+                "id": 3,
+                "proto": "bool socket_instance.close()",
+                "desc": "关闭socket",
+                "usage": "cfd.close();"
+            },
+            {
+                "id": 4,
+                "proto": "int socket_instance.bind(string/int address, int port)",
+                "desc": "将socket绑定到指定地址",
+                "usage": "sfd.bind(SockParam.INADDR_ANY, PORT)；"
+            },
+            {
+                "id": 5,
+                "proto": "int socket_instance.connect(mixed address, int port)",
+                "desc": "客户端发起连接，成功返回0，失败返回-1",
+                "usage": "fd.connect(\"127.0.0.1\", PORT);"
+            },
+            {
+                "id": 6,
+                "proto": "int socket_instance.listen( int backlog = 128)",
+                "desc": "服务端监听端口，参数是最多允许的连接数，成功返回0，失败返回-1",
+                "usage": "sfd.listen(64);"
+            },
+            {
+                "id": 7,
+                "proto": "int socket_instance.set_opt(int level, int optname, int value)",
+                "desc": "设置socket的选项，返回错误码",
+                "usage": "server.set_opt(SockOptLevel.SOCKET, SockOpt.REUSEADDR, 1);"
+            },
+            {
+                "id": 8,
+                "proto": "array socket_instance.recv(int len)",
+                "desc": "从socket接收数据，len是接收缓冲区长度。成功时返回实际接收长度和缓冲区数据，失败时返回错误码。",
+                "usage": "let int len, mixed buff =sfd.recv(_RECV_LEN);"
+            },
+            {
+                "id": 9,
+                "proto": "array socket_instance.recv_from(int len)",
+                "desc": "从socket接收数据，与recv不同的是，成功时还要返回对端ip、port。",
+                "usage": "let size, buf, ip, port = fd.recv_from(BLOCK_SIZE);"
+            },
+            {
+                "id": 10,
+                "proto": "array socket.select(array/int? read_mask, array/int? write_mask, array/int? except_mask, int/float timeout = -1)",
+                "desc": "以select方式接收/发送数据。",
+                "usage": "let int n, fds = socket.select(fds, 0, 0, 15);"
+            },
+            {
+                "id": 11,
+                "proto": "int socket_instance.send(string/buffer data)",
+                "desc": "发送数据",
+                "usage": "fd.send(\"HTTP/1.1 400 Bad request\\r\\n\\r\\n\");"
+            },
+            {
+                "id": 12,
+                "proto": "int socket_instance.send_to(string/buffer data, string/buffer ip, int port)",
+                "desc": "发送数据到指定对端",
+                "usage": "fd.send_to(buf, dest.ip, dest.port);"
+            }
+        ];
+
+<ExternalApiTable list={socket_apis} />

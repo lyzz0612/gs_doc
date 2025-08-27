@@ -1,0 +1,224 @@
+---
+sidebar_label: '数值类型（bool，int，float）'
+sidebar_position: 3
+---
+
+# 数值类型（bool，int->(enum)，float）
+在GS中，int的底层储存形式是64位的有符号整数，float是64位的浮点数；
+
+## bool
+bool 类型是GS 内置声明的枚举类型，包含 true 和 false 两个值，bool更多用于条件判断语句中，其基本用法如下：
+```cpp
+bool flag;      // flag = false
+flag = true;    // flag = true
+```
+## int
+GS 支持十进制、二进制、八进制、十六进制和字符形式的字面量，如下所示：
+
+```cpp
+int val = 65;               // 四个式子等价，val的值都是18
+int val = 0b1000001;        // 二进制使用 0b 开头
+int val = 0101;             // 八进制使用 0 开头
+int val = 0x41;             // 十六进制使用 0x 开头
+int val = 'A';              // 字符形式，val的值是65
+```
+---
+
+### int常用的外部函数
+
+下面列出int类型一些常用的外部函数以及用法。
+
+export const int_apis = [
+            {
+                "id": 1,
+                "proto": "string int_instance.to_string()",
+                "desc": "int转成string",
+                "usage": "int val = 1024;\nstring str = val.to_string(); // str = \"1024\""
+            },
+            {
+                "id": 2,
+                "proto": "int int.parse(string str)",
+                "desc": "string转成int",
+                "usage": "string str = \"1024\";\nint val = int.parse(str); // val = 1024"
+            },
+            {
+                "id": 3,
+                "proto": "bool is_int(mixed val)",
+                "desc": "判断是否为int",
+                "usage": "int val = 1024;\nbool flag = is_int(val); // flag = true"
+            },
+            {
+                "id": 4,
+                "proto": "bool int_instance.is_alpha()",
+                "desc": "判断是否为字母",
+                "usage": "int val = 'a';\nbool flag = val.is_alpha(); // flag = true"
+            },
+            {
+                "id": 5,
+                "proto": "bool int_instance.is_chinese()",
+                "desc": "判断是否是汉字",
+                "usage": "int val = '是';\nbool flag = val.is_chinese(); // flag = true"
+            },
+            {
+                "id": 6,
+                "proto": "bool int_instance.is_digit()",
+                "desc": "判断是否是字符型数字: '0'~'9'",
+                "usage": "int val = '0';\nbool flag = val.is_digit(); // flag = true"
+            },
+            {
+                "id": 7,
+                "proto": "bool int_instance.is_lower()",
+                "desc": "判断是否是小写字母",
+                "usage": "int val = 'a';\nbool flag = val.is_lower(); // flag = true"
+            },
+            {
+                "id": 8,
+                "proto": "bool int_instance.is_upper()",
+                "desc": "判断是否是大写字母",
+                "usage": "int val = 'A';\nbool flag = val.is_upper(); // flag = true"
+            },
+            {
+                "id": 9,
+                "proto": "bool int_instance.is_xdigit()",
+                "desc": "判断是否是十六进制字符: '0'~'9','a'~'f','A'~'F'",
+                "usage": "int val = 'A';\nbool flag = val.is_xdigit(); // flag = true"
+            },
+            {
+                "id": 10,
+                "proto": "int int_instance.to_xdigit()",
+                "desc": "int转成字符: 10~15 to 'A'~'F'",
+                "usage": "int val = 10;\nint char = val.to_xdigit(); // char = 65 ('A'的ASCII码)"
+            },
+            {
+                "id": 11,
+                "proto": "int int_instance.from_xdigit()",
+                "desc": "字符转成int: '0'~'9','A'~'F' to 0~15",
+                "usage": "int char = 'A';\nint val = char.from_xdigit(); // val = 10"
+            },
+            {
+                "id": 12,
+                "proto": "int int_instance.to_upper()",
+                "desc": "小写字母转成大写字母",
+                "usage": "int char_lower = 'a';\nint char_upper = char_lower.to_upper(); // char_upper = 65"
+            },
+            {
+                "id": 13,
+                "proto": "int int_instance.to_lower()",
+                "desc": "大写字母转成小写字母",
+                "usage": "int char_upper = 'A';\nint char_lower = char_upper.to_lower(); // char_lower = 97"
+            },
+            {
+                "id": 14,
+                "proto": "int int_instance.get_byte(int offset)",
+                "desc": "获取指定整数在指定偏移量处的字节(从低字节开始计数)\n偏移量范围[0,7]\n始终返回无符号数，即值范围[0,255]",
+                "usage": "int val = 0x12345678;\nint byte = val.get_byte(1); // byte = 0x56"
+            },
+            {
+                "id": 15,
+                "proto": "bool int_instance.get_bit(int offset)",
+                "desc": "获取指定整数在指定偏移量处的位(从低位开始计数)\n偏移量范围[0,63]\n如果该位为0返回false，否则返回true",
+                "usage": "int val = 0b1010;\nbool bit = val.get_bit(1); // bit = true"
+            }
+        ];
+
+<ExternalApiTable list={int_apis} />
+
+---
+
+:::tip 注
+
+***条件判断语句中，int类型中除了0为false之外其它都为true。***
+
+:::
+
+## float
+float表示64位的浮点数，其只支持十进制形式的字面量，其用法如下
+```cpp
+float pi = 3.14;
+float a = 3f;
+float b = 3.f;
+float c = 3.0f;
+float d = .1f;
+```
+***注意：任意两个类型之间的转换都需要强制类型转换。***
+```cpp
+int val = 3.14;             // 错误
+int val = (int)3.14;        // 正确
+float pi = 3;               // 错误
+float pi = 3f;              // 正确
+float pi = (float)3;        // 正确
+```
+
+### 运算可能会产生类型为 float 的 nan 或 inf 
+
+nan: not a number，表示“无效数字”。 nan是无序的，当对其进行逻辑运算时其不大于、小于或等于任何数，包括它自己。如果数学表达式中含有nan，那么数学表达式的结果为nan。
+
+###  nan的产生情概况基本分成以下三类：
+
+* 浮点数除法的 0.0 / 0.0 ，无论正负，两个数中有一个为浮点数
+* 无意义的数学操作函数，如math.acos(-2) , math.sin(-2)， math.log(-2)  等 
+* 部分 inf 运算, 如 inf - inf ， inf / inf， 0 * inf
+
+inf：infinite，表示“无穷大”。+inf 大于任何数字(除了它自己和nan)， -inf小于任何数字(除了它自己和nan) ， +inf 与 -inf 互为负数(但 -inf / inf 结果为 nan ) ，得到inf是需要查看是否有溢出或者除以0的情况。
+
+###  inf的产生情况也是三类:
+
+* 浮点数除法 1.0 /0.0 , 即非零数字除以0，两个数中有一个为浮点数
+* 部分数学操作函数产生，如 log(0) 
+* 部分 inf 运算, 如 0 + inf   inf -(-inf)  -inf - inf等
+
+### 以下为产生 nan 与 inf 的部分样例:
+
+```cpp
+
+//nan 产生的部分情况如下:
+math.sqrt(-1)               //1. 对负数的开方，无意义
+math.log(-1)                //2. 对负数求对数，无意义
+0.0/0.0                     //3. 0 / 0 其中一个为浮点数 (保证为浮点数除法)
+0.0 * (1.0 / 0.0)           //4. 实际是 0 * inf 
+(1.0 / 0.0) / (1.0 / 0.0)   //5. 实际是 inf / inf (无论正负)
+(1.0 / 0.0) - (1.0 / 0.0)   //6. 实际是 inf - inf
+
+// inf 产生的部分情况如下:
+1.0 / 0.0                   //1. 非零数字除以0 其中一个为浮点数(保证为浮点数除发)  得到 inf 
+-1.0 / 0.0                  //2. 非零数字除以0 其中一个为浮点数(保证为浮点数除发)  得到 -inf
+-100 + (1.0 / 0.0)          //3. 实际是 -100 + inf，非nan数字加减inf
+math.log(0)                 //4. log(0) 得到 -inf
+1.0/0.0 - -1.0/0.0          //5, 实际是 inf - (-inf) 得到 inf
+-1.0/0.0 - 1.0/0.0          //5, 实际是 (-inf) - inf 得到 -inf
+```
+
+:::tip
+
+**判断 inf 或者 nan 可以调用 `math.isinf(float_number)   math.isnan(float_number)`**
+
+:::
+
+---
+
+### float常用的外部函数
+
+下面列出float类型一些常用的外部函数以及用法。
+
+export const float_apis = [
+            {
+                "id": 1,
+                "proto": "string float_instance.to_string()",
+                "desc": "float转成string",
+                "usage": "float val = 3.14;\nstring str = val.to_string(); // str = \"3.14\""
+            },
+            {
+                "id": 2,
+                "proto": "float float.parse(string str)",
+                "desc": "string转成float",
+                "usage": "string str = \"3.14\";\nfloat val = float.parse(str); // val = 3.14"
+            },
+            {
+                "id": 3,
+                "proto": "bool is_float(mixed val)",
+                "desc": "判断是否为float",
+                "usage": "float val = 3.14;\nbool flag = is_float(val); // flag = true"
+            }
+        ];
+
+<ExternalApiTable list={float_apis} />

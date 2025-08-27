@@ -1,0 +1,9 @@
+{
+    "position": 6,
+    "label": "面向组件",
+    "collapsible": true,
+    "collapsed": false,
+    "customProps": {
+      "description": "This description can be used in the swizzled DocCard"
+    }
+}

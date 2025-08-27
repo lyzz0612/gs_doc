@@ -1,0 +1,19 @@
+---
+sidebar_label: '空类型（nil，void）'
+sidebar_position: 2
+---
+
+# 空类型（nil，void）
+GS中的 nil 和 void 都表示空的意思，只是它们所在的环境不一样。 
+其中 nil 一般用于表示数据的空，而 void一般用在函数的参数和返回值上面。
+
+可以通过 get_void_value() 获取 `void` 类型的实例
+
+```cpp
+int? val = nil;     // 此时val的值为 nil
+if(! val)           // nil在条件表达式中被视同 false
+    printf("val is nil");
+
+writeln(nil); // 输出 nil
+writeln(void); // 输出 (void)
+```

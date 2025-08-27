@@ -1,0 +1,83 @@
+﻿﻿# 正则表达式regex
+
+## 概述
+
+:::danger deprecated
+
+***已弃用*** : 使用pkg: [regex_pcre2](https://m68gitlab.g-bits.com/pkgs/regex_pcre2)替代
+
+:::
+
+
+主要提供正则匹配/搜索/替换功能，接口和C++11标准库中保持一致。
+
+## 功能使用说明
+
+### 正则匹配
+ 
+匹配字符串域传入的正则表达式，如果匹配则返回true，否则返回false(参照[std::regex_match](https://zh.cppreference.com/w/cpp/regex/regex_match) )
+```cpp
+bool regex.match(string str, string rgx, RegexFlags flag = 0)
+```
+
+### 正则搜索
+
+将所有匹配到的结果以字符串列表的形式返回(参照[std::regex_search](https://zh.cppreference.com/w/cpp/regex/regex_search) )
+```cpp
+array regex.search(string str, string rgx, RegexFlags flag = 0)
+```
+
+* 当匹配到空的时候，固定向前移一个字符，否则会导致死循环。
+比如：regex.search("abc", "[a]*")的匹配过程：
+
+```
+"abc" -> 匹配到"a"
+"bc"  -> 匹配到"",前移一个字符
+"c"   -> 匹配到"",前移一个字符
+""    -> 匹配到"",匹配结束
+```
+
+### 正则替换(参照[std::regex_replace]
+
+将满足匹配的部分按照指定格式进行替换(https://zh.cppreference.com/w/cpp/regex/regex_replace) )
+```cpp
+string regex.replace(string str, string rgx, string fmt, RegexFlags flag)
+```
+
+举个例子：
+```cpp
+// Match
+bool is_match = false;
+is_match = regex.match("subject", "(sub)(.*)", RegexFlags.DEFAULT); // is_match = true
+is_match = regex.match("subject", "(sub)....");                     // is_match = true
+is_match = regex.match("subject", "sub..");                         // is_match = flase
+
+// Search
+array search_ret = regex.search("this subject has a submarine as a subsequence", "\\b(sub)([^ ]*)");
+//search_ret = [
+//                [ "subject", "sub", "ject", ],
+//                [ "submarine", "sub", "marine", ],
+//                [ "subsequence", "sub", "sequence", ],
+//             ];
+      
+// Replace
+string new_str = regex.replace("this is a subsequence in the string", "\\b(sub)([^ ]*)", "sub-$2");
+// new_str = "this is a sub-sequence in the string");
+```
+
+## RegexFlags说明
+gs中的枚举值 | c++标准库对应值 | 说明
+---- | ---- |---- |
+RegexFlags.DEFAULT         | std::regex_constants::match_default       | Default matching behavior.  This constant has a value of zero**.
+RegexFlags.NOT_BOL         | std::regex_constants::match_not_bol       | The first character is not considered a beginning of line (\"^\" does not match).
+RegexFlags.NOT_EOL         | std::regex_constants::match_not_eol       | The last character is not considered an end of line (\"$\" does not match).
+RegexFlags.NOT_BOW         | std::regex_constants::match_not_bow       | The escape sequence \"\b\" does not match as a beginning-of-word.
+RegexFlags.NOT_EOW         | std::regex_constants::match_not_eow       | The escape sequence \"\b\" does not match as an end-of-word.
+RegexFlags.ANY             | std::regex_constants::match_any           | Any match is acceptable if more than one match is possible.
+RegexFlags.NOT_NULL        | std::regex_constants::match_not_null      | Empty sequences do not match.
+RegexFlags.CONTINUOUS      | std::regex_constants::match_continuous    | The expression must match a sub-sequence that begins at the first character. Sub-sequences must begin at the first character to match. 
+RegexFlags.PREV_AVAIL      | std::regex_constants::match_prev_avail    | One or more characters exist before the first one. (match_not_bol and match_not_bow are ignored) 
+RegexFlags.FORMAT_DEFAULT  | std::regex_constants::format_default      | Uses the standard formatting rules to replace matches (those used by ECMAScript's replace method)." "This constant has a value of zero**.
+RegexFlags.FORMAT_SED      | std::regex_constants::format_sed          | Uses the same rules as the sed utility in POSIX to replace matches.
+RegexFlags.FORMAT_NO_COPY  | std::regex_constants::format_no_copy      | The sections in the target sequence that do not match the regular expression are not copied when replacing matches.
+RegexFlags.FORMAT_FIRST_ONLY|std::regex_constants::format_first_only   | Only the first occurrence of a regular expression is replaced.

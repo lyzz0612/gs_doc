@@ -1,0 +1,252 @@
+---
+sidebar_label: '可扩充类型handle'
+sidebar_position: 6
+---
+
+# 可扩充类型handle
+
+扩充类型`object`, `program`, `domain`,`coroutine`,`timer`,`socket`,`share_value`,`sync_object`, `ref_value`等类型都是扩充自**handle**，
+
+如果需要扩充自己的类型，则应继承自**handle**
+
+## handle
+handle翻译为“句柄”，也就是“把手”的意思，可以理解为用来方便控制某个东西的东西。
+
+### Handle用于管理某个Resource
+
+* 通过引用计数确保Resource指针有效
+* 通过Handle上的Lock确保Resource相关操作的线程安全
+* HandlePtr 内部用一个64bit的整形表示，包含类型，索引分页，索引偏移，版本 信息
+* 创建handle的时候，引用计数初始值为1
+
+### Handle的组织结构
+
+|字段|大小|描述|
+| :- | :- | :- |
+|m_state     |1Byte      |Handle的状态，有UNUSED,OPENED,CLOSED，这个只是Handle状态，Resource自己应该也有状态|
+|m_ref       |4Byte      |Handle的引用计数，创建时初始值为1|
+|m_handle_id |8Byte      |Handle对应的ID，64位非负整形，包含Handle的类型/索引/版本信息|
+|m_resource  |8Byte      |Handle对应的资源指针|
+|m_lock      |不定       |不同的Lock实现大小可能不同，用来实现资源的锁定和解锁，确保共享数据线程安全|
+|m_entry     |不定       |额外的自定义信息，如Object就会额外存放domain，看确定是否在当前域，这样可以免去引用计数和锁|
+
+### Handle状态说明
+
+* handle有四个内置状态：INVALID, INITIALIZING, USING, CLOSED
+* INVALID为初始状态，此时的handle还没被分配，不可使用
+* 创建一个新的句柄后，句柄就处于INITIALIZING状态，句柄初始化中，ref必定大于0，此时不能被close
+* 对句柄进行Open操作后，句柄就处于USING状态，句柄可以被正常使用，ref必定大于0，此时可以被close
+* 关闭句柄后（调用句柄的close）句柄处于CLOSED状态，此后所有cast_opened_handle将失败，当ref变为0时，清除并回收句柄
+
+### Handle生命周期
+
+* 分配阶段  new出一个资源后，通过allocate_handle分配一个资源对应的handle
+* 初始化段  得到handle后（此时不需要通过dummy锁住），进行初始化操作
+* 使用阶段  通过handle的open方法，将handle和某个资源绑定，这个open是指handle的open并不一定是资源真正的open，资源本身如果需要单独的打开流程需要自己处理（一般应在此open操作之前完成），自身的状态也需要自己处理，不应该依赖handle的状态
+* 关闭阶段  通过handle的close方法，主动减少一次引用计数，并将状态设为CLOSED，close必须在lock范围内调用，此后所有cast_opened_handle操作将会失败。close时会调用close_resource函数。等到handle的引用计数减为0，则调用资源的free_resource函数，并回收句柄。close方法仅能在USING状态下使用
+注意：资源的free_resource函数中不能有lock/unlock操作，否则引用计数改变会导致再次关闭
+
+### Handle操作流程
+
+* 当我们需要在多线程环境下对某个资源进行操作的时候，需要使用Handle来保证线程安全
+* 先通过Handle::cast_opened_handle(handle_id)在栈上获取Handle的dummy对象
+* 刚获取的时候，只是引用计数+1了，而并未进行lock
+* 我们可以对资源进行lock和unlock操作来确保某段读写资源的代码不会重入
+* 在中间过程中产生的任何返回或异常会导致栈回溯，dummy对象被自动销毁，自动进行unref和unlock
+* 如果需要在退出函数前就把引用计数归还，可以手动调用dummy的unref减引用计数，此后dummy将失效
+* 正常情况下，应该让dummy自动销毁，在析构中unref
+* 资源的打开要自己实现一些逻辑，涉及到ref的加减，要格外小心
+* 资源关闭可以使用通用的关闭方法Handle::close_handle_resource，如果特殊需求也可以自己实现
+* Handle::take_raw_handle(id) 可以获取到Handle对象的引用，一般情况不建议使用，一旦过程中返回或抛异常，可能会导致没有正确unlock或者unref
+
+### 用Handle机制进行Object管理
+
+* get_entry_by_id获取object相关信息可以通过get_entry来实现，不锁、不改变引用计数，只查看entry数据
+* object的Lock对象中封装了它对应的域
+* invoke操作的时候可能不能走通用的lock/unlock，对效率要求较高，且需求不满足，还是维持以前的逻辑
+* 对object进行一些其他操作时，比如某个外部函数要取object获取一些信息
+* object的lock/unlock操作，会切域：
+  * lock   : leave_domain -> push call context -> push domain context
+  * unlock : pop domain context -> pop call context -> check_gc
+
+### 用Handle机制进行Domain管理
+* 我们要确保domain的安全，确保可以正常删除domain
+* 为每个Domain分配一个HandlePtr, create_domain时引用计数+1
+* push domain context的时候需要引用计数+1
+* pop domain context的时候引用计数-1
+* delete_domain时引用计数-1
+* Domain的 lock/unlock操作：
+  * lock   : enter_domain
+  * unlock : leave_domain
+
+### 防死锁
+```
+    THREAD1  lock a -> lock b  --\  dead
+    THREAD2  lock b -> lock a  --/  lock
+```
+* 增加LockContext结构，将lock和unlock以栈的形式进行操作
+* lock的时候   push lock context
+* unlock的时候 pop lock context
+* LockContext中可以包含多个锁对象，且优先级必须相同
+* 锁之前进行排序
+* push的LockContext的优先级只能比之前高，防止死锁
+
+但是，我们是否有需求一次性锁多个资源，或嵌套多层锁？
+
+* 上层调用时有需求一次性锁多个域或share_value，确保操作的原子性
+* 底层逻辑似乎并没有这个需求
+
+### Handle上的Entry数据和peek_handle方法
+
+* 有的时候我们只是向看一下handle上的一些数据，并不需要线程安全。
+如 Object的Entry中包含domain，如果domain与当前域相同那么我们可以放心地使用，不用去cast_opened_handle并lock，
+如果不同，再走后面的流程相当于我们先瞄一眼这个handle，如果发现目前可以安全使用，
+直接就拿来用Object会大量利用这个特性，否则很多操作都要锁。
+
+需要注意：尽量不要直接使用ObjectHandle::peek_handle来访问。以避免应该锁而未锁的情况（比如peek以后
+尝试直接取值并进行使用。事实上除非handle中entry的domain等于当前锁定的domain，否则handle内的数据都
+有可能发生变化）。推荐使用Object::hold_handle，它会记录当前正在访问的handle，让Object Collector
+不会回收handle。
+
+* 为了让Entry更安全，不至于刚获取Entry，由于Handle复用，Entry的数据马上被其他Handle的数据给覆盖掉，
+我们限制当剩余可用句柄不足10个的时候就重新分配一页句柄，避免出现Entry数据在极短时间内就被写脏的情况。
+但即使如此，Entry的使用还是有风险的，要非常谨慎
+
+### 为什么需要一个HandleManager来统一管理？
+
+我们可能有需求要根据一个id来进行一些操作，需要动态根据type获取allocator来做一些指定的操作。
+如：我们需要一次性批量锁一批handle（排序后锁）
+
+我们知道object,domain,coroutine,timer,socket,share_value,sync_object等类型都是扩充自handle，
+所以一般我们可以使用扩充类型来初始化handle。比如：
+```cpp
+handle h1 = socket.create();                            // socket
+handle h2 = domain.create();                            // domain
+handle h3 = timer.create(0.1, 0, (: not_execute_me :)); // timer
+handle h4 = this_coroutine();                           // coroutine
+handle h5 = socket.create();                            // socket
+handle h6 = share_value.allocate("unamed", 0);          // share_value
+handle h7 = sync_object.create_semaphore();             // sync_object
+handle h8 = file.open("cn_gbk.txt", "r", file_data);    // file
+```
+
+---
+
+### handle常用的外部函数
+
+下面列出handle类型一些常用的外部函数以及用法。
+
+```cpp
+handle hd = domain.create("hello");
+```
+
+export const handle_apis = [
+            {
+                "id": 1,
+                "proto": "int handle_instance.handle_id()",
+                "desc": "句柄ID",
+                "usage": "int hd_id = hd.handle_id(); // hd_id = ..."
+            },
+            {
+                "id": 2,
+                "proto": "string handle_instance.type_name()",
+                "desc": "句柄类型",
+                "usage": "string hd_name = hd.type_name(); // hd_name = \"domain\""
+            },
+            {
+                "id": 3,
+                "proto": "map  handle_instance.info()",
+                "desc": "句柄信息",
+                "usage": "map hd_info = hd.info(); // 无"
+            },
+            {
+                "id": 4,
+                "proto": "bool handle_instance.close()",
+                "desc": "关闭句柄",
+                "usage": "bool flag = hd.close(); // flag = true"
+            },
+            {
+                "id": 5,
+                "proto": "bool handle_instance.is_closed()",
+                "desc": "句柄是否关闭",
+                "usage": "bool flag = hd.is_closed(); // flag = false"
+            },
+            {
+                "id": 6,
+                "proto": "array handle.get_types()",
+                "desc": "所有支持句柄type",
+                "usage": "array arr = handle.get_types(); // 输出在表格下"
+            },
+            {
+                "id": 7,
+                "proto": "array handle.get_all()",
+                "desc": "所有句柄",
+                "usage": "array arr = handle.get_all(); // 无"
+            },
+            {
+                "id": 8,
+                "proto": "bool is_handle(mixed val)",
+                "desc": "是否句柄",
+                "usage": "bool flag = is_handle(hd); // flag = true"
+            },
+            {
+                "id": 9,
+                "proto": "mixed handle.find(int id)",
+                "desc": "根据ID找句柄",
+                "usage": "mixed hd1 = handle.find(hd.handle_id()); // hd1 = hd"
+            },
+            {
+                "id": 10,
+                "proto": "void handle_instance.bind_value(mixed val)",
+                "desc": "句柄绑定值",
+                "usage": "见第13项"
+            },
+            {
+                "id": 11,
+                "proto": "mixed handle_instance.get_bind_value(mixed val)",
+                "desc": "获取句柄绑定值",
+                "usage": "readonly map m := {\"a\": 1};\nhandle hd = domain.create(\"hello\");\nhd.bind_value(m);\nmixed val = hd.get_bind_value(); // val = {\"a\": 1}"
+            },
+            {
+                "id": 12,
+                "proto": "mixed handle.get_name_by_id(int id)",
+                "desc": "获取type name",
+                "usage": "string name = handle.get_name_by_id(2); // name = \"domain\""
+            },
+            {
+                "id": 13,
+                "proto": "mixed handle.get_id_by_name(string name)",
+                "desc": "获取type ID",
+                "usage": "int id = handle.get_id_by_name(\"domain\"); // id = 2"
+            }
+        ];
+
+<ExternalApiTable list={handle_apis} />
+
+---
+
+:::note
+
+handle.get_types() 输出的所有 handle 类型如下:
+```
+[ /* sizeof() == 16 */
+    "pseudo",
+    "program",
+    "domain",
+    "object",
+    "sync_object",
+    "queue",
+    "co",
+    "iterator",
+    "socket",
+    "device",
+    "url",
+    "timer",
+    "share_value",
+    "ref_value",
+    "archive",
+    "weak_table",
+]
+```
+
+:::

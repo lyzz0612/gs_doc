@@ -1,0 +1,48 @@
+﻿---
+sidebar_label: 'xml文件格式'
+sidebar_position: 7
+---
+
+
+# xml - xml文件读取插件
+
+## 概述
+本插件提供了xml文件相关读写功能
+
+## 功能使用说明
+___________________________________________________________________________________________________________________________
+下面列出xml插件的外部函数以及用法。
+
+export const xml_apis = [
+            {
+                "id": 1,
+                "proto": "mixed xml.load_mapping(string xml_file_text)",
+                "desc": "加载xml文件",
+                "usage": "map m = xml.parse(text);"
+            },
+            {
+                "id": 2,
+                "proto": "mixed xml.parse(string xml_file_text, bool skip_comment = true)",
+                "desc": "解析xml文件",
+                "usage": "map m = xml.load_mapping(text);"
+            },
+            {
+                "id": 3,
+                "proto": "string xml.save_mapping(map m)",
+                "desc": "保存到xml文件",
+                "usage": "string m_str = xml.save_mapping(m);"
+            }
+        ];
+
+<ExternalApiTable list={xml_apis} />
+
+___________________________________________________________________________________________________________________________
+
+举个例子：
+```cpp
+string text = file.read_all("/etc/database.xml");
+
+map m = xml.parse(text);                // parse
+m = xml.load_mapping(text);             // load_mapping
+string m_str = xml.save_mapping(m);     // save_mapping
+```

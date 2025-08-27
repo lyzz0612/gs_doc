@@ -1,0 +1,42 @@
+---
+sidebar_label: '结构体类型struct'
+sidebar_position: 7
+---
+
+# 结构体类型struct
+
+struct 结构体声明格式如下, 和在源码中定义的struct基本一致。
+
+```cpp
+EMBED_FFI_BEGIN
+struct struct_name{
+    type_name var_name;
+    ...
+};
+
+// 其他的结构体声明...
+
+EMBED_FFI_END
+```
+
+- struct 可以通过 `struct_name struct_val = struct_name(arg0,arg1....)` 的形式初始化
+- 以 `struct_val.element_name`  的形式存取 struct 的成员。
+- 在 GS 中，结构体类型用于和C/C++进行交互使用，struct 可用于接收 ffi 库构造的相同 struct 结构的数据。
+
+```cpp
+EMBED_FFI_BEGIN
+struct Vector3
+{
+    uint8_t x;
+    float y;
+    float z;
+};
+EMBED_FFI_END
+
+Vector3 vec = Vector3(11,2.0,3.0);
+write(vec.x, "\n");
+vec.x = 0xaaaa; // 无整型溢出检查
+printf("%x\n", vec.x); // 输出 aa
+vec.x = 12.11;  // 会导致类型检查错误
+```
+

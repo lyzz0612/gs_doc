@@ -1,0 +1,398 @@
+---
+sidebar_label: '容器类型（array, map）'
+sidebar_position: 5
+---
+
+# 容器类型（array, map）
+
+array表示数组，顺序存储一系列数值，map表示一种映射关系，他们的存储内存也都是动态分配的。
+
+## array
+array 数组和 buffer 有点类似，都是可以顺序存储数据类型的数据。 
+但 buffer 和 array有以下区别：buffer 仅支持 0 ~ 255 的 int 数据作为成员数据，
+而 array 不仅可以放 int, float 这些基本数据类型， 还可以存放 string，array，map，buffer等等任意 mixed 数据类型。
+
+array类型基本语法如下：
+```cpp
+array array_name = [ value1, value2, value3, ... ];    // value可以为任意不同类型的数值
+```
+
+array初始化，以及一些简单的符号运算：
+```cpp
+array arr = [ 1, 2, nil, "Three", 2, [ "hello", (buffer)1, 3.14 ] ]; // 初始化arr
+array arr1 = [1, 2], arr2 = [3, 4];
+array add_arr = arr1 + arr2;    // add_arr = [1, 2, 3, 4]
+add_arr << ["hello"];           // add_arr = [1, 2, 3, 4, "hello"]
+write(add_arr[0]);              // 输出 1
+```
+
+array特殊语法
+* array_instance[&ltn] 获取数组倒数第n个元素
+
+* array_instance[m..n] 获取第m个元素到第n个元素构成的子数组
+
+* array_instance[m..&ltn] 获取第m个元素到倒数n个元素构成的子数组
+
+* array_instance[&ltm..&ltn] 获取倒数第m个元素到倒数n个元素构成的子数组
+
+样例：
+
+```cpp
+array test_arr = [1,2,3,4,5];       // 初始化arr
+write(test_arr[<1], "\n");          // 输出 5
+write(test_arr[<2], "\n");          // 输出 4
+write(test_arr[1..<2], "\n");       // 输出 [2,3,4]
+write(test_arr[1..2], "\n");        // 输出 [2,3]
+write(test_arr[<3..<1], "\n");      // 输出 [3,4,5]
+```
+
+---
+
+### array常用的外部函数
+
+下面列出array类型一些常用的外部函数以及用法。
+
+export const array_apis = [
+    {
+        "id": 1,
+        "proto": "array array.allocate(int size, mixed val = nil)",
+        "desc": "分配空间",
+        "usage": "array arr = array.allocate(6); // arr.length() = 6"
+    },
+    {
+        "id": 2,
+        "proto": "array array_instance.clean_up()",
+        "desc": "清除空值",
+        "usage": "array arr = [1, 2, nil, \"Three\", 4]; arr.clean_up(); // arr.length() = 4"
+    },
+    {
+        "id": 3,
+        "proto": "void array_instance.clear()",
+        "desc": "清除空间",
+        "usage": "array arr = [1, 2, nil, \"Three\", 4]; arr.clear(); // arr.length() = 0"
+    },
+    {
+        "id": 4,
+        "proto": "int array_instance.delete(mixed val)",
+        "desc": "删除一个值",
+        "usage": "array arr = [1, 2, nil, \"Three\", 2]; int index = arr.delete(2); // index = 1"
+    },
+    {
+        "id": 5,
+        "proto": "void array_instance.delete_at(int pos, int num = 1)",
+        "desc": "删除n个值",
+        "usage": "array arr = [1, 2, nil, \"Three\", 2]; arr.delete_at(2, 2); // arr = [1, 2, 2]"
+    },
+    {
+        "id": 6,
+        "proto": "int array_instance.find(mixed val)",
+        "desc": "查找，失败-1",
+        "usage": "array arr = [1, 2, nil, \"Three\", 2]; int index = arr.find(2); // index = 1"
+    },
+    {
+        "id": 7,
+        "proto": "mixed array_instance.get(int pos)",
+        "desc": "取值",
+        "usage": "array arr = [1, 2, nil, \"Three\", 2]; mixed val = arr.get(1); // val = 2"
+    },
+    {
+        "id": 8,
+        "proto": "array array_instance.get_range(int pos, int count = -1)",
+        "desc": "取子array",
+        "usage": "array arr = [1, 2, nil, \"Three\", 2]; array child = arr.get_range(2,2); // child = [nil, \"Three\", 2]"
+    },
+    {
+        "id": 9,
+        "proto": "void array_instance.insert(int pos, mixed val)",
+        "desc": "插入",
+        "usage": "array arr = [1, 2, nil, \"Three\", 2]; arr.insert(1,\"One\"); // arr = [1, \"one\", 2, nil, \"Three\", 2]"
+    },
+    {
+        "id": 10,
+        "proto": "void array_instance.insert_n(int pos, array val)",
+        "desc": "插入数组",
+        "usage": "array arr = [1, 2, nil, \"Three\", 2]; array a = [3, 4]; arr.insert_n(1,a); // arr = [1, 3, 4, 2, nil, \"Three\", 2]"
+    },
+    {
+        "id": 11,
+        "proto": "int array_instance.lower_bound(mixed val)",
+        "desc": "小于val的元素个数",
+        "usage": "array arr = [1, 3, 5, 6.5, 7, 9]; int num = arr.lower_bound(6.5); // num = 3 (数组元素需要有序，二分查找)"
+    },
+    {
+        "id": 12,
+        "proto": "int array_instance.upper_bound(mixed val)",
+        "desc": "大等于val的元素个数",
+        "usage": "array arr = [1, 3, 5, 6.5, 7, 9]; int num = arr.upper_bound(6.5); // num = 4"
+    },
+    {
+        "id": 13,
+        "proto": "mixed array_instance.get(int pos)",
+        "desc": "取值",
+        "usage": "array arr = [1, 2, nil, \"Three\", 2]; mixed val = arr.get(1); // val = 2"
+    },
+    {
+        "id": 14,
+        "proto": "void array_instance.push_back(mixed val)",
+        "desc": "往后插入",
+        "usage": "array arr = [1, 2, nil, \"Three\", 2];\narr.push_back(\"!\"); // arr = [1, 2, nil, \"Three\", 2, \"!\"]"
+    },
+    {
+        "id": 15,
+        "proto": "void array_instance.push_back_n(array val)",
+        "desc": "往后插入数组",
+        "usage": "array arr = [1, 2, nil, \"Three\", 2];\narray a = [3, 4]; arr.push_back_n(a); // arr = [1, 2, nil, \"Three\", 2, 3, 4]"
+    },
+    {
+        "id": 16,
+        "proto": "void array_instance.set(int pos, mixed val)",
+        "desc": "赋值",
+        "usage": "array arr = [1, 2, nil, \"Three\", 2];\narr.set(2,\"2\"); // arr = [1, 2, \"2\", \"Three\", 2]"
+    },
+    {
+        "id": 17,
+        "proto": "void array.copy(array dst, int pos, array src, int start = 0, int copy_len = 2^63 - 1)",
+        "desc": "复制",
+        "usage": "array arr = [1, 2, 3];\narray arr1 = array.allocate(3);\narray.copy(arr1, 0, arr);// arr1 = [1, 2, 3]"
+    },
+    {
+        "id": 18,
+        "proto": "string array_instance.implode(string delim = \"\")",
+        "desc": "array转字符串",
+        "usage": "array arr = [\"hello\", \"world\"];\nstring str = arr.implode(\" \"); // str = \"hello world\""
+    },
+    {
+        "id": 19,
+        "proto": "array array_instance.sort(int order = SortType.ASCENDING)",
+        "desc": "排序",
+        "usage": "array arr = [7, 3, (buffer)1, \"str\"];\narr = arr.sort(SortType.ASCENDING); //arr [3, 7, \"str\", (buffer)1])"
+    },
+    {
+        "id": 20,
+        "proto": "array array_instance.sort(function func, int order = ASCENDING)",
+        "desc": "函数排序",
+        "usage": "//"
+    },
+    {
+        "id": 21,
+        "proto": "bool is_array(mixed val)",
+        "desc": "是否为array",
+        "usage": "array arr = [1, 2, nil, \"Three\", 2];\nbool flag = is_array(arr); // flag = true"
+    },
+    {
+        "id": 22,
+        "proto": "array array.map(array arr, function func)",
+        "desc": "array映射",
+        "usage": "array arr = [111, \"222\", [1, 2]];\narray arrs = arr.map((: lengthof :)); // arrs = [0, 3, 2]"
+    },
+    {
+        "id": 23,
+        "proto": "array array.range(int start, int end)",
+        "desc": "范围数组",
+        "usage": "array arr = [\"hello\", \"world\", 1, 3];\narray arr1 = array.range(2, 4); // arr1 = [2, 3, 4]"
+    },
+    {
+        "id": 24,
+        "proto": "array array_instance.to_string()",
+        "desc": "array转string",
+        "usage": "array arr = [\"hello\", \"world\", 1, 3];\nstring str = arr.to_string(); // str = \"[\"hello\",\"world\",1,3]\""
+    },
+    {
+        "id": 25,
+        "proto": "array array_instance.filter(function fun)",
+        "desc": "筛选新array",
+        "usage": "array arr=[4, 6, 8];\narray arr1 = arr.filter((mixed val){ return val > 5;}); // arr1 = [6, 8]"
+    },
+    {
+        "id": 26,
+        "proto": "mixed array_instance.select_first(function fun)",
+        "desc": "筛选第一个满足条件的value",
+        "usage": "用法与filter()类似"
+    },
+    {
+        "id": 27,
+        "proto": "mixed array_instance.reduce_left(function fun)",
+        "desc": "从左压缩数组",
+        "usage": "array arr = [1, 2, 3];\nint val = arr.reduce_left((int val1, int val2){return val1 + val2}); // val = 6;"
+    },
+    {
+        "id": 28,
+        "proto": "mixed array_instance.reduce_right(function fun)",
+        "desc": "从右压缩数组",
+        "usage": "用法与reduce_left()类似"
+    }
+];
+
+<ExternalApiTable list={array_apis} />
+
+## map
+map可以理解为一种类似于函数的映射（key -> value)，其中key和value都可以是任意mixed类型的数值。
+
+map类型基本语法如下：
+```cpp
+map map_name = { key1:value1, key2:value2, key3:value3, ... };    // key和value可以为任意不同类型的数值
+```
+
+map初始化，以及一些简单的符号运算：
+```cpp
+map m = {1:2, nil:"Three", "arr":[1, 2]}; // 初始化m
+map m1 = {1:2, 3:5}, m2 = {3:4};
+map add_map = m1 + m2; // add_map = {1:2, 3:4}， 覆盖m1中相同的key
+write(add_map[1]);   // 输出 2
+```
+---
+
+### map常用的外部函数
+
+下面列出map类型一些常用的外部函数以及用法
+
+export const map_apis = [
+            {
+                "id": 1,
+                "proto": "mixed map.add_values(map m1, map m2)",
+                "desc": "values相加",
+                "usage": "map m1 = {1:2, 3:5}, m2 = {1:2.3, 3:4};\nmap m = map.add_values(m1, m2); // m = {1:4.3, 3:9}"
+            },
+            {
+                "id": 2,
+                "proto": "map map.allocate(int size) ",
+                "desc": "分配空间",
+                "usage": "map m = map.allocate(6); // 注意：m.size() = 0"
+            },
+            {
+                "id": 3,
+                "proto": "map map_instance.clean_up()",
+                "desc": "删除无用值",
+                "usage": "map m = {1:2, nil:4, \"hello\":nil};\nm = m.clean_up(); // m = {1:2, nil:4}"
+            },
+            {
+                "id": 4,
+                "proto": "void map_instance.clear()  ",
+                "desc": "清除map",
+                "usage": "map m = {1:2, nil:4, \"hello\":nil};\nm.clear(); // m = {}"
+            },
+            {
+                "id": 5,
+                "proto": "int map_instance.delete(mixed key)",
+                "desc": "删除key对应值（成功true）",
+                "usage": "map m = {1:2, nil:4, \"hello\":nil};\nint val = m.delete(1); // val = true"
+            },
+            {
+                "id": 6,
+                "proto": "int map_instance.delete_value(mixed val)",
+                "desc": "删除value对应值",
+                "usage": "map m = {1:2, nil:4, \"hello\":2};\nint val = m.delete_value(2); // val = 2 (val为删除的数量)"
+            },
+            {
+                "id": 7,
+                "proto": "mixed map_instance.get(mixed key)",
+                "desc": "取key对应value",
+                "usage": "map m = {1:2, nil:4, \"hello\":nil};\nmixed val = m.get(1); // val = 2"
+            },
+            {
+                "id": 8,
+                "proto": "array map_instance.keys()",
+                "desc": "取出所有key",
+                "usage": "map m = {1:2, nil:4, \"hello\":nil};\narray keys = m.keys(); // keys = [1, nil, \"hello\"]"
+            },
+            {
+                "id": 9,
+                "proto": "void map_instance.set(mixed key, mixed val)",
+                "desc": "设置key-value",
+                "usage": "map m = {1:2, nil:4, \"hello\":nil};\nm.set(nil, \"hello\"); // m = {1:2, nil:\"hello\", \"hello\":nil}"
+            },
+            {
+                "id": 10,
+                "proto": "array map_instance.values()",
+                "desc": "取出所有value",
+                "usage": "map m = {1:2, nil:4, \"hello\":nil};\narray values = m.values(); // values = [2, 4, nil]"
+            },
+            {
+                "id": 11,
+                "proto": "bool is_mapping(mixed val)",
+                "desc": "是否为map",
+                "usage": "map m = {1:2, nil:4, \"hello\":nil};\nbool flag = is_map(m); // flag = true"
+            },
+            {
+                "id": 12,
+                "proto": "bool map_instance.contains_key(mixed key)",
+                "desc": "是否包含key",
+                "usage": "map m = {1:2, nil:4, \"hello\":nil};\nbool flag = m.contains_key(1); // flag = true"
+            },
+            {
+                "id": 13,
+                "proto": "string map_instance.to_string()",
+                "desc": "map转string",
+                "usage": "map m = {1:2, nil:4};\nstring str = m.to_string(); // str = \"{1:2,nil:4}\""
+            },
+            {
+                "id": 14,
+                "proto": "string map_instance.map(function func)",
+                "desc": "map生成新map",
+                "usage": "map m = {\"a\": 2, \"b\": 3};\nmap m1 = m.map((int val, string key){ return val + 1;}); // m1 = {\"a\": 3, \"b\": 4}"
+            },
+            {
+                "id": 15,
+                "proto": "mixed map_instance.select_first_key(function func)",
+                "desc": "找第一个满足条件的value",
+                "usage": "map m = {\"a\": 2, \"b\": 6, \"c\": 7};\nmixed m1 = m.select_first_key((int val, string key){ return val > 5;}); // m1 = \"b\""
+            },
+            {
+                "id": 16,
+                "proto": "mixed map_instance.select_first_value(function func)",
+                "desc": "找第一个满足条件的key",
+                "usage": "// 用法与select_first_key()类似"
+            },
+            {
+                "id": 17,
+                "proto": "mixed map_instance.express_set(string path, mixed val)",
+                "desc": "设置path-value",
+                "usage": "map m = { };\nm.express_set(\"a/b\", 1); // m = {a: {b: 1}}"
+            },
+            {
+                "id": 18,
+                "proto": "mixed map_instance.express_add(string path, mixed val)",
+                "desc": "增加path对应value",
+                "usage": "m.express_add(\"a/b\", 2); // m = {a: {b: 3}}"
+            },
+            {
+                "id": 19,
+                "proto": "mixed map_instance.express_query(string path)",
+                "desc": "查询path对应value",
+                "usage": "int val = m.express_query(\"a/b\"); //val = 3"
+            },
+            {
+                "id": 20,
+                "proto": "mixed map_instance.express_delete(string path)",
+                "desc": "删除path对应value",
+                "usage": "m.express_delete(\"a/b\"); // m = { }"
+            },
+            {
+                "id": 21,
+                "proto": "mixed map_instance.get_key_at(int idx)",
+                "desc": "按照遍历顺序，获取第idx个key；如果索引越界，则会抛出异常",
+                "usage": "map m = {\"a\": 2, \"b\": 3};\nstring key = m.get_key_at(0);"
+            },
+            {
+                "id": 22,
+                "proto": "mixed map_instance.get_val_at(int idx)",
+                "desc": "按照遍历顺序，获取第idx个value；如果索引越界，则会抛出异常",
+                "usage": "map m = {\"a\": 2, \"b\": 3};\nint val = m.get_val_at(0);"
+            },
+            {
+                "id": 23,
+                "proto": "void map_instance.set_val_at(int idx, mixed val)",
+                "desc": "按照遍历顺序，设置第idx个value；如果索引越界，则会抛出异常",
+                "usage": "map m = {\"a\": 2, \"b\": 3};\nm.set_val_at(0, 5);"
+            }
+        ];
+
+<ExternalApiTable list={map_apis} />
+
+<br/>
+
+:::warning
+
+第14项新map的`new_pair = [old_pair.key, (*func)(old_pair.value, old_pair.key)]`
+
+:::

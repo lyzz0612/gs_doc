@@ -1,0 +1,42 @@
+---
+sidebar_label: '简单示例'
+sidebar_position: 1
+---
+
+# 简单示例
+
+* 以如下简单的HelloWorld为例，初步了解object基本创建和销毁过程。
+
+## 从HelloWorld说起
+
+```cpp title="helloword.gs"
+void create()
+{
+    write("create\n");
+    hello();
+}
+
+void hello()
+{
+    write("helloworld\n");
+}
+
+void destruct()
+{
+    write("destruct\n");
+}
+
+hello();
+```
+
+在上一章的最后一节，我们已经可以启动driver并运行一些脚本。但当时并不关注语法，在这一小节中，将以helloworld为例介绍一个简单的示例(helloworld.gs)。
+
+当我们用上一章的方法`load_static`这个实例对象，可以看到结果将会是
+```bash
+helloworld
+create
+helloworld
+```
+
+当创建这个 helloworld.gs 的实例对象时，先执行了写在最外面（第17行）的 hello 函数，之后自动执行了 create 函数。此时，如果尝试在控制台上敲destruct_object(helloworld)，object 在销毁时会自动执行 destruct 函数。
+create 及 destruct 两个函数不是必须的，不写并不影响使用。但我们希望实例对象创建和销毁时（driver关闭时所有的对象会自动销毁）自动执行的流程，则可以添加在这两个函数中。

@@ -1,0 +1,276 @@
+---
+sidebar_label: '控制语句'
+sidebar_position: 1
+---
+
+# 流程控制语句
+* 介绍GS中的if-else switch ?: for while等流程控制语句的语法
+* 顺带介绍一下GS中一个defer语句的用法。
+
+一般流程控制语句大体分成两部分：一是判断语句，二是循环语句。我们的GS中有一个defer语句，
+因为其功能跟流程控制语句有点相似，所以在这篇文档结尾还会介绍一下defer语句的基本使用方法。
+
+## 判断语句
+判断语句主要包含 `if-else`，`?:` 和 `switch` 三种类型
+
+### if-else型
+if-else型判断语句又分成三种不同的使用方式
+#### if
+if语句基本语法：
+```cpp
+if(boolean_expression)  // 如果boolean_expression = true， 就执行函数体
+{
+    // execute body
+}
+```
+#### if-else
+if-else语句基本语法：
+```cpp
+if(boolean_expression)  // 如果boolean_expression = true， 就执行body1，跳过else，否则执行body2
+{
+    // execute body1
+}
+else
+{
+    // execute body2
+}
+```
+
+#### if...else if...else
+if...else if...else语句基本语法：
+```cpp
+if(boolean_expression_1)  // 从上往下，如果boolean_expression_x = true， 就执行body_x，跳过下面的else if和else。
+{
+    // execute body1
+} 
+...
+else if(boolean_expression_m)
+{
+    // execute body_m
+}
+...
+else
+{
+    // execute bodyn
+}
+```
+
+#### 嵌套使用if-else
+if-else型支持多层嵌套使用，
+嵌套型if-else语句基本语法：
+```cpp
+if(boolean_expression1)  
+{
+    if(boolean_expression2)
+    {
+        ...
+    }
+    ...
+    else
+    {
+        ...
+    }
+}
+else if
+{
+    if(boolean_expression3)
+    {
+        ...
+    }
+}
+else
+{
+    ...
+}
+```
+
+### ?:型
+三目型判断语句与if-else型语句很相似，两者可以相互转换，但三目型判断语句相对更简洁（只要一行）。  
+:?语句基本语法：
+```cpp
+boolean_expression ? expression1 : expression2 // 如果boolean_expression = true，则执行expression1，否则执行expression2
+```
+举个例子：
+```cpp
+int a = 0, b = 1;   // a = (a和b中的最大值)
+if(a > b)
+    a = a;
+else
+    a = b;
+```
+等价于：
+```cpp
+int a = 0, b = 1;
+a = a > b ? a : b;
+```
+但是后者更加简洁明了。
+
+### ??型
+二目型判断语句??特别的是，判断条件不再是判断条件是否为true，而是判断条件是否**不**为 `nil` 或 `void`
+??语句基本语法：
+```cpp
+expression1 ?? expression2 // expression1 为 nil 或 void 则取 expression2，若 expression1 不为 nil 或 void 则取 expression 1
+```
+举个例子：
+```cpp
+write(0??1)     // expr1=0 不为 void 或 nil，输出 0
+write(1??0)     // 输出 1
+write(nil??1)   // expr1=nil 为 nil，输出 1
+write(nil??0)   // 输出 0
+```
+
+### switch型
+switch型判断语句跟if-else型判断语句可以相互转换，当判断层次较多且比较简单时使用switch语句更好。
+
+讲到switch语句之前不得不先讲一个break语句
+* 执行break语句直接跳到最近一个的'}'的后面，也就是这个块的下一条语句前面。
+
+switch语句基本语法为：
+```cpp
+switch(expression)
+{
+case constant_expression1 :
+    statement;
+    break;   // 可选的
+case constant_expression2 :
+    statement;
+    break;   // 可选的
+case constant_expression3 :
+    statement;
+    break;   // 可选的
+...
+default :    // 可选的
+    statement; 
+}
+```
+switch语句必须遵循以下规则：
+
+* case语句中的待匹配值应当是一个编译期可以求得的常量；
+* 一个switch中可以有任意个case语句，每个case语句后面加一个跟expression比较的值和一个冒号；
+* case中的constant_expression必须和expression具有相同的数据类型；
+* 当程序进入一个case中执行之后还会继续执行下面的case，直到遇到break语句为止。
+* 每个case都可以选择break
+* switch最后一个default表示前面所有的case都不符合就执行default，相当于if-else语句中的else，它是可选的。
+
+同样，switch语句也是可以和if-else语句一样多层嵌套，具体语法类似if-else
+
+## 循环语句
+循环语句主要包含for和while两种类型
+
+讲到for和while语句之前不得不先讲一个break和continue语句。  
+* 执行break语句直接最近一个循环，如果该循环有'{}'就跳出最近一个'}'后面，否则跳到该循环语句下面要执行的语句开头。   
+* 执行continue语句会跳过最近一个'}'前面所有语句。
+
+### for型
+for循环是一个允许执行特定次数的循环重复控制结构。
+
+for循环语句基本语法有两种：
+#### 第一种for循环（常见）
+```cpp
+for( initial; condition; increment ) // initial、condition、increment两两之间要用分号分开，并且三者都可以为空
+{
+    statements;
+}
+```
+下面解释一下for循环的控制流：  
+
+* 1、for循环一开始initial语句首先被执行，并且只会执行一次，initial语句一般充当初始化控制循环变量的作用。initial可以为空；    
+* 2、接下来执行condition判断语句，如果为真就执行循环体statements，否则跳到紧接着for循环的下一条语句；condition也可以为空，如果条件表达式为空，则始终满足循环条件，要有break退出循环；  
+* 3、在执行完for循环主体之后，控制流会跳到increment语句，increment一般用来更新循环控制变量，这部分也可以为空；  
+* 4、接下来控制流会跳到第2步。  
+
+举个例子：
+```cpp
+for(int i = 0; i < 5; i ++)
+{
+    write(i);
+}
+// 程序执行之后输出 01234
+```
+
+#### 第二种for循环（不常见）
+
+```cpp
+for( int val = from upto(or downto) to ) // 表示val从from递增（或者）递减到to
+{
+    statements;
+}
+```
+下面解释一下for循环的控制流：    
+
+* 1、for循环一开始先执行`val = from`，并且只会执行一次；     
+* 2、接下来执行`val <= to`是否为真，如果为真就执行循环体statements，否则跳到紧接着for循环的下一条语句；   
+* 3、在执行完for循环主体之后，`++val`，表示自加1；   
+* 4、接下来控制流会跳到第2步。    
+
+举个例子：
+```cpp
+for(int i = 0 upto 5)
+{
+    write(i);
+}
+// 程序执行之后输出 012345
+```
+
+#### 第三种for循环（常见）
+
+```cpp
+// 循环1
+for(value_type idntifier: container)
+{
+    
+}
+// 循环2
+for(value_type idntifier_key, value_type idntifier_val: container)
+{
+    
+}
+```
+迭代器循环，循环一用于循环迭代 array 或 map，循环二专用于迭代map。其中value_type代表用于接收迭代变量的类型，idntifier为变量名，container为array或map变量。
+
+:::warning
+
+注意：在迭代过程中不可改变容器的长度，如调用push_back, clear 函数等
+
+:::
+
+* 1、循环一中的container为array时，迭代变量idntifier用于接收从前往后遍历数组成员。
+* 2、循环一中的container为map时， 迭代变量idntifier用于接收由map的key-value pair及索引构成的[key, value, index] 数组
+* 3、循环二中的container为map时，idntifier_key用于接收由map的key-value pair中的key, idntifier_val用于接收由map的key-value pair中的value。
+
+### while型
+while循环又分为两种，直接while循环和do-while循环，两者的主要区别是while先判断后执行，而do-while刚好相反，两者的选择要看实际用途。
+
+#### 直接while型
+直接while型语句基本语法：
+```cpp
+while(condition)
+{
+    statements;
+}
+```
+下面解释一下while循环的控制流：  
+
+* 1、while循环一开始先判断condition是否为真；    
+* 2、如果为真就执行循环体statements，否则跳到紧接着while循环的下一条语句。  
+
+#### do-while型
+do-while型语句基本语法：
+```cpp
+do
+{
+    statements;
+} while(condition); // 注意最后有个';'号
+```
+下面解释一下do-while循环的控制流：   
+
+* 1、do-while循环一开始先执行循环体statements；    
+* 2、接下来判断condition是否为真，如果为真就跳到1，否则跳到紧接着while循环的下一条语句。  
+
+## defer
+
+:::info
+
+见 [程序结构-Defer](./Defer)
+
+:::

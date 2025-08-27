@@ -1,0 +1,535 @@
+---
+sidebar_label: '类（class_map）'
+sidebar_position: 3
+---
+
+# class_map
+
+## 简介
+
+class_map类型主要实现了类似C++/java的类，实现比较简单，只支持单继承，做这个的主要目的有两个：
+  1. 字段明确，好维护
+  1. 类型明确，好优化
+
+## 说明
+* 我们目前的模式是所有数据集合都放在map中，无论简单的，复杂的，易变的还是不变的，这样的好处是很灵活，我们增加key，减少key，代码都不需要变动，只要生成的地方和使用的地方约定好即可
+* 灵活的同时也带来了坏处，时间一久，内容一多，大家都不清楚某个函数传递的map中都有些什么数据，某个对象身上的map中都有些什么数据，只能在runtime的时候去打印，或者来回看代码，很容易出现错漏。  
+* 很多情况下，一些对象身上的map和函数传递时的map都是比较固定的，如果能有类似struct的数据结构来保存和传递会更易维护，如果IDE支持得好，补全提示也比较好做
+* 后续JIT优化的时候，类型都是明确的，不需要预测，会比较好做优化。
+
+## 注意
+* 在使用class_map时，请尽可能保证类型明确。这样编译器可以在编译时尽可能做好类型的检查和约束。
+
+## 示例
+
+```cpp title="test_class_map.gs"
+#include "test_util.gsh"
+
+class A 
+{
+    int a = 1;
+    public int foo(A self)
+    {
+        return self.a;
+    }
+};
+
+class B : A 
+{
+    string b = "b";
+    public void __new(B self, int a, string b)
+    {
+        self.a = a;
+        self.b = b;
+    };
+    public int foo(B self)
+    {
+        return self.a * self.a;
+    }
+};
+
+class C : B
+{
+    float c = 3.0f;
+    A inner_cls = nil;
+
+    public void __new(C self, int a, string b, float c)
+    {
+        B.__new(self, a, b);
+        self.c = c;
+    };
+
+    public int foo(C self)
+    {
+        return B.foo(self) + A.foo(self) + (int)self.c;
+    };
+
+    public int foo2(C self)
+    {
+        return self.inner_cls.foo();
+    };
+
+    public int static_foo(int a)
+    {
+        return a * a;
+    };
+};
+
+void _test_equal(mixed a, mixed b, string msg = nil)
+{
+    printf("test_equal: %M\n", a);
+    test_equal(a, b, msg);
+}
+
+void _test_same(mixed a, mixed b, string msg = nil)
+{
+    printf("test_same: %M\n", a);
+    test_same(a, b, msg);
+}
+
+void test_class()
+{
+    _test_equal(A.a, 1);
+    A a = A.new();
+    _test_equal(a.a, 1);
+    _test_equal(a.get_class(), A);
+    _test_equal(B.b, "b");
+    B b = B.new(2, "bb");
+    _test_equal(b.get_class(), B);
+    _test_equal(b.a, 2);
+    _test_equal(b.b, "bb");
+    _test_same(b.map_data(), {"b" : "bb", "a" : 2});
+    C c = C.new(3, "bb", 12);
+    _test_same(c.foo(), 24);
+    _test_same(C.static_foo(10), 100);
+    c.inner_cls = b;
+    _test_same(c.foo2(), 4);
+}
+
+test_class();
+```
+
+## 底层实现
+
+class_map是map的一个子类型，底层实现为sub_type为1的map类型，所有的class_map都有同一个sub_type，这样实现的主要原因是我们对于子类型的判断比较严格，而对于class的类型判断，确实需要考虑继承关系的，无法简单得用底层sub_type的方式来处理
+
+整体的实现上，clas_map就是常量map的语法糖，比如这样的一段代码：
+```cpp
+class A 
+{
+    int a = 1;
+};
+
+class B : B
+{
+    string b = "bb";
+};
+```
+基本等价于这一段代码：
+```cpp
+const map A = {
+    "__class__" : "A",
+    "a" : 1,
+};
+
+const map B = A + {
+    "__class__" : "B",
+    "__inherits__" : ["A"],
+    "b" : "bb",
+};
+```
+当然并不完全等价，我们还在编译时保存了类的全局信息，类名对应哪个常量map，类中有哪些字段，分别是什么类型等等，跟过细节可以看cmm_map_class.h/cmm_map_class.cpp的实现
+
+带成员函数的情况也则是使用了新的常量函数的实现，如这样的一个类：
+
+```cpp title=" test_class_map2.gs"
+class A
+{
+    int a = 2;
+    public void __new(A self, int a)
+    {
+        self.a = a;
+    };
+    public void foo(A self, int a)
+    {
+        printf("foo = %d\n", a + self.a);
+    };
+}
+printf("A = %O\n", A);
+A a = A.new(3);
+printf("A.new(3) = %O\n", a);
+printf("program functions = %O\n", this.get_program().get_functions());
+a.foo(10);
+
+```
+
+打印出来会看到：
+```
+A = { /* sizeof() == 5 */
+    "a" : 2,
+    "__new" : (: .__new@A :)<no this>,
+    "foo" : (: .foo@A :)<no this>,
+    "__class__" : "A",
+    "__inherits__" : [ ],
+}
+A.new(3) = class A{ /* sizeof() == 1 */
+    "a" : 3,
+}
+program functions = [ /* sizeof() == 3 */
+    "::entry",
+    "__new@A",
+    "foo@A",
+]
+foo = 13
+```
+* (: .foo@A :)就是这个对象上的一个函数，no_this说明没有绑定对象实例  
+* 因为我们要把这个函数放在一个常量map中，常量在编译时生成，肯定还不能有对应的对象示例，也不应该被绑定在某个域，为了支持常量函数，我们支持了让某个函数不绑定具体的对象实例，而是可以在调用的时候指定，可以看下remove_ob_instance和call_by_instance的说明
+* 看a.foo(10)，实例调用函数的时候，会把自己作为第一个参数传入
+* 打印new出来的class_map实例时，会显示class的members，方便调试
+* 为什么是foo@A，而不是foo？因为我们可以在一个文件内定义多个类，每个类都可以有个foo方法，比如运行这段代码：
+```
+class A { public void foo() {} };
+class B { public void foo() {} };
+class C { public void foo() {} };
+printf("program functions = %O\n", 
+    this.get_program().get_functions());
+```
+就能看到，结果是有三个foo函数：
+```
+program functions = [ /* sizeof() == 4 */
+    "::entry",
+    "foo@A",
+    "foo@B",
+    "foo@C",
+]
+```
+
+## 概念
+
+* 成员变量
+
+成员变量是在类中定义的变量，成员变量储存在类实例之中（在 1.32.250427 以及之前的版本，
+成员变量被分成两部分储存（即实例 + 元表）。之后的版本，成员变量将直接储存在实例之中）。
+
+子类可以覆盖父类的同名 public 和 protected 成员变量（这么做的意义仅仅是提供不同的初始值）。
+
+成员变量的默认访问权限是 public，除非在成员变量前面加上 private 或 protected 关键字。
+
+编译器会为成员变量的索引操作进行类型检查，如果被访问成员的实例有明确类型，编译器能够为
+索引表达式推导其成员类型，如果类型没有对应的成员定义，能及时给出诊断。如果被索引的实例
+没能明确类型，编译期检查无法执行，运行时如果索引的成员不存在，则结果为 `nil`(和 map 的
+行为类似)
+
+```js
+class Example
+{
+    int a = 1; // 成员变量，默认访问权限为 public
+    private string b = "Hello"; // 成员变量，访问权限为 private
+    protected float c = 3.14; // 成员变量，访问权限为 protected
+}
+
+Example ex = Example.new();
+ex.a = 2; // 设置成员变量 a 的值为 2
+// ex.b = "World"; // 错误，因为 b 是 private 成员变量，不能在类外访问
+// ex.c = 3.14; // 错误，因为 c 是 protected 成员变量，不能在类外访问
+// ex.non_existent = 42; // 错误，如果 Example 类没有定义 non_existent 成员变量，编译期会报错
+
+mixed m = ex;
+m.non_existent; // 错误，但是此处 m 没有类型信息，因此编译期OK，运行时得到 nil
+```
+
+* 成员函数
+
+成员函数是在类中定义的函数，成员函数储存在元表中（在 1.32.250427 以及之前的版本中，可
+以像访问成员一样访问到成员函数；之后的版本中，只能从元表中取出函数，或者在方法调用和创建
+方法闭包中访问成员函数）
+
+```js
+class Example
+{
+    void foo(Example self)
+    {
+        printf("Hello from Example.foo\n");
+    }
+}
+Example ex = Example.new();
+ex.foo(); // 调用成员函数, OK
+
+// function f1 = ex.foo;        // 1.32.250427 及之前的版本：OK; 
+                                // 之后的版本，foo被视为成员变量，找不到foo成员变量；编译期报错或在运行时得到 nil
+function f2 = (: ex.foo :);         // OK
+function f3 = Example.foo;          // OK
+function f4 = ex.get_class().foo;   // OK，等效于 Example.foo
+```
+
+普通的成员函数始终需要定义名为 `self` 的首参数，首参数的类型应该是类的类型。
+
+使用 `static` 修饰的成员函数被称为 `静态成员函数`，静态成员函数不要求声明 `self` 参数，并且可以通过元表直接调用。
+
+需要注意的是，运行时是根据方法调用的 `.` 符号前的对象是 `实例` 或 `元表` 来决定是否传入自身作为首个参数的。
+因此尝试使用实例调用静态成员函数时，仍然会传入自身作为首个参数，这通常会导致问题。
+
+### 继承
+
+类可以通过 `:` 符号来继承其他类，继承的类被称为 `父类`，继承的类被称为 `子类`。
+子类可以覆盖父类公开或保护的成员变量和成员函数。
+
+```js
+class Base
+{
+    public int a = 1; // 成员变量
+    public void foo(Base self) // 成员函数
+    {
+        printf("Base foo: %d\n", self.a);
+    }
+}
+
+class Derived : Base // 继承 Base 类
+{
+    public int b = 2; // 新增成员变量
+    public void foo(Derived self) // 重写成员函数
+    {
+        printf("Derived foo: %d, %d\n", self.a, self.b);
+    }
+}
+
+Base base_ = Base.new();
+base_.foo(); // 调用 Base 类的 foo 方法，输出 "Base foo: 1"
+Derived derived = Derived.new();
+derived.foo(); // 调用 Derived 类的 foo 方法，输出 "Derived foo: 1, 2"
+```
+
+### 默认的序列化和反序列化逻辑
+
+如果**没有**自定义的序列化和反序列化函数，`json` 和 `msgpack` 会按照默认规则，将 `class_map` 
+的所有键值对加上其类型信息一起序列化；也能按照默认的规则，将序列化结果反序列化产生 `class` 实例：
+
+```js
+class Example
+{
+    int a = 1;
+    string b = "Hello";
+}
+Example ex = Example.new();
+
+string dat = json.save(ex); // 序列化为 JSON 字符串
+writeln(dat); // 输出: {"a":1,"b":"Hello","__class__":"Example","__program__":"/test.gs"}
+json.parse(dat); // 得到新的 Example 实例：Example{ "a" : 1, "b" : "Hello" }
+```
+
+关于自定义的序列化（`__serialize`） 和反序列化（`__deserialize`）函数的使用，请参考下面的章节。
+
+### 特殊函数
+
+一些特定函数名被class视为特殊函数，这些函数拥有特别的功能，所有的特殊函数都应该是公开的。
+
+#### 构造函数(`__new`)
+
+在 class 内定义名为 `__new` 的成员函数会被视为构造函数，构造函数应该是一个非静态的成员函数，可以从
+`class_map.new` 和 `class_map.new_by_map` 中得到额外的构造参数。
+
+构造函数只有在手动调用和 `class_map.new` / `class_map.new_by_map` 创建实例时才会被调用。
+
+创建实例时，如果实例本身有定义构造函数，则不会自动调用父类的构造函数，因此需要手动调用父类的构造函数。
+
+```js
+class Base
+{
+    public void __new(Base self)
+    {
+        printf("Base constructor called\n");
+    }
+}
+class Derived : Base
+{
+    public void __new(Derived self, string msg)
+    {
+        Base.__new(self); // 手动调用父类的构造函数
+        printf("Derived constructor called with: %s\n", msg);
+    }
+}
+Derived instance = Derived.new("Helloworld"); // 构造参数被传递给 Derived 的构造函数
+```
+
+#### 析构函数(`__destruct`)
+
+析构函数是在类中定义名为 `__destruct` 的成员函数，析构函数会在实例被GC机制释放，或者手动调用
+`class_map.close()` 调用。
+
+析构函数应该是一个非静态的成员函数，析构函数应该只有 `self` 参数。
+
+只有使用 `class_map.new` 或 `class_map.new_by_map` 创建的实例才会触发析构函数。
+
+```js
+class Example
+{
+    public void __destruct(Example self)
+    {
+        printf("Example instance is being destroyed\n");
+    }
+}
+Example ex = Example.new();
+Example ex2 = ex.dup(); // 复制实例
+
+ex.close(); // 手动调用析构函数，输出："Example instance is being destroyed\n"
+ex2.close(); // ex2 不是被 new/new_by_map 创建的实例，因此不会触发析构函数
+```
+
+#### 序列化函数(`__serialize`)
+
+在类中定义名为 `__serialize` 的成员函数会被视为序列化函数，序列化函数应该是一个非静态成员函数，
+返回值类型可以是任何可被序列化的类型，仅接收 `self` 参数。
+
+在 json 和 msgpack 对class实例执行序列化时，会调用此函数，序列化函数的返回值将代替class实例被
+序列化。
+
+```js
+class Example
+{
+    int a = 1;
+    public mixed __serialize(Example self)
+    {
+        return {"a" : self.a * 2}; // 序列化时将 a 的值乘以 2
+    }
+}
+Example ex = Example.new();
+writeln(json.save(ex)); // 输出 {"a": 2}
+```
+
+如果class 有定义反序列化函数 `__deserialize`，则序列化结果将被包装成一个带有class元数据（类名，
+脚本名或序列化ID）的map，这将被用于之后反序列化：
+
+```js
+class Example
+{
+    int a = 1;
+    public mixed __serialize(Example self)
+    {
+        return {"a" : self.a * 2}; // 序列化时将 a 的值乘以 2
+    }
+    public static Example __deserialize(map data)
+    {
+        Example ex = Example.new();
+        ex.a = data["a"] / 2; // 反序列化时将 a 的值除以 2
+        return ex;
+    }
+}
+Example ex = Example.new();
+writeln(json.save(ex)); 
+// 输出: {"__class__":"Example","__program__":"/test.gs","__value__":{"a":2}}
+```
+
+#### 反序列化函数(`__deserialize`)
+
+在类中定义名为 `__deserialize` 的成员函数会被视为反序列化函数，反序列化函数应该是一个静态成员函数，
+接收一个参数，这个参数用于接收从序列化数据中读取出的原始类型，并通过反序列化函数将其转化成最终类型。
+反序列化函数的返回值类型通常应该是类的类型。
+
+```js
+class Example
+{
+    int a = 1;
+    public static Example __deserialize(map data)
+    {
+        Example ex = Example.new();
+        ex.a = data["a"]; // 从序列化数据中读取 a 的值
+        return ex;
+    }
+}
+Example ex = Example.new();
+string dat = json.save(ex);
+
+Example ex2 = json.load(dat); // 反序列化时调用 Example.__deserialize
+writeln(ex2); 
+// 输出:
+// class Example{ /* sizeof() == 1 */
+//    "a" : 1,
+// }
+```
+
+
+
+## 内置方法
+
+export const class_apis = [
+            {
+                "id": 1,
+                "proto": "class_map? class_map.find_class_define(string program_name, string class_name)",
+                "desc": "给定程序名称和类名，寻找对应program中的parent-class常量",
+                "usage": "//"
+            },
+            {
+                "id": 2,
+                "proto": "class_map class_map.get_class(class_map cls)",
+                "desc": "获取指定class实例对应的parent-class常量",
+                "usage": "//"
+            },
+            {
+                "id": 3,
+                "proto": "bool class_map.is_a(class_map cls_instance, class_map cls)",
+                "desc": "获取指定class实例对应的parent-class常量",
+                "usage": "//"
+            },
+            {
+                "id": 4,
+                "proto": "map class_map.map_data(class_map cls)",
+                "desc": "将class数据转换成普通的map，包含class的所有非内部字段的值",
+                "usage": "//"
+            },
+            {
+                "id": 5,
+                "proto": "map class_map.methods(class_map cls)",
+                "desc": "获取给定class实例或常量的所有方法",
+                "usage": "//"
+            },
+            {
+                "id": 6,
+                "proto": "map class_map.fields(class_map cls)",
+                "desc": "获取给定class实例或常量的所有字段数据，包括名称、类型和初始值",
+                "usage": "//"
+            },
+            {
+                "id": 7,
+                "proto": "void class_map.close(class_map cls_instance)",
+                "desc": "手动调用给定class实例的析构方法（如果有的话）",
+                "usage": "//"
+            },
+            {
+                "id": 8,
+                "proto": "domain? class_map.get_domain(class_map cls_instance)",
+                "desc": "如果 class_map 有析构函数（并且实例由new/new_by_map）创建，获取给定class实例所在的domain；否则返回nil",
+                "usage": "//"
+            },
+            {
+                "id": 9,
+                "proto": "void class_map.enable_clone(class_map cls, bool enable)",
+                "desc": "开启或关闭给定class实例或类型的克隆功能，默认开启。如果对类型开启，只影响之后创建的实例。",
+                "usage": "//"
+            },
+            {
+                "id": 10,
+                "proto": "void class_map.register_serialize_id(class_map cls, string id)",
+                "desc": "注册给定class实例或类型的序列化ID，序列化/反序列化时会使用这个ID来标识该类型",
+                "usage": "//"
+            },
+            {
+                "id": 11,
+                "proto": "string? class_map.get_serialize_id(class_map cls)",
+                "desc": "获取给定class实例或类型的序列化ID，如果没有注册则返回nil",
+                "usage": "//"
+            },
+            {
+                "id": 12,
+                "proto": "class_map? class_map.get_class_by_serialize_id(string id)",
+                "desc": "根据序列化ID获取对应的class_map类型，如果没有注册则返回nil",
+                "usage": "//"
+            },
+            {
+                "id": 13,
+                "proto": "void class_map.close(class_map cls_instance)",
+                "desc": "手动调用给定class实例的析构方法（如果有的话），只有使用 new / new_by_map 创建的实例才会触发析构",
+                "usage": "//"
+            },             
+        ];
+
+<ExternalApiTable list={class_apis} />

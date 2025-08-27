@@ -1,0 +1,203 @@
+---
+sidebar_label: '弱引用表'
+sidebar_position: 13
+---
+
+
+# weakref - 弱引用插件
+
+## 概述
+
+weakref插件以表的方式提供弱引用机制。
+
+弱引用表`weak_table`是一种handle，其内部存储键值对，支持表的插入和查询操作。弱引用表以弱引用的方式持有键（和值），当引用类型的值只能通过弱引用访问时，称其弱可达，GC可以选择将其回收。
+
+弱引用表关联了一个域，只有当协程在该域运行时可以访问弱表，否则将抛出异常。
+
+**注意**：string类型被视作值类型，在弱引用表中存储string类型的值永远是可达的。
+
+**注意**：与C++标准库中的弱指针不同，在GS中无法静态的判断一个值在特定程序点是否变成弱可达。只有当垃圾收集器确认值不可达时，弱引用表中的弱引用才被置空。
+
+*通过--require weakref引入弱引用插件，即可使用弱引用表。*
+
+**weak_keys**
+
+弱引用表总是以弱引用的方式持有值（Value）。当弱引用表的weak_keys属性为`true`时（默认为`false`），弱引用表以弱引用的方式持有键（Key）。
+
+一对键值无论键或值变为弱可达都将导致该键值对从弱引用表中清除。
+
+**async**
+
+当弱引用表的async属性为`true`时（默认为`true`），允许垃圾收集器自动清理弱可达的表项；否则，由应用程序负责在合适的位置调用`clear_weakrefs`清弱可达的表现。
+
+**注意**：如果不知道应该何时调用`clear_weakrefs`，通常应该创建async的弱引用表。对于async为`false`的弱引用表，如果不调用`clear_weakrefs`将导致底层资源无法被回收并造成内存泄漏。
+
+*async属性对弱引用表的访问效率有略微影响。*
+
+## 性能
+
+| Ops  | `map` | `weak_table` (async=true) | `weak_table` (async=false) |
+| :--- | :---: | :---:                     | :---:                      |
+| set  | 1.794 | 2.506                     | 3.271                      |
+| get  | 1.139 | 1.988                     | 2.149                      |
+
+## 样例
+
+```cpp
+weak_table wt = weak_table.create();
+
+map m = {};
+
+wt[1] = m;
+
+assert(wt[1] == m);
+
+gc.start();
+
+assert(wt[1] == nil);
+```
+
+## 接口
+
+export const weakref_apis = [
+            {
+                "id": 1,
+                "proto": "weak_table weak_table.create(bool async = true, bool weak_keys = false)",
+                "desc": "创建弱表",
+                "usage": "weak_table wt = weak_table.create();"
+            },
+            {
+                "id": 2,
+                "proto": "mixed weak_table_instance.get(mixed key)",
+                "desc": "查询弱表",
+                "usage": "mixed val = wt.get(\"key\");"
+            },
+            {
+                "id": 3,
+                "proto": "void weak_table_instance.set(mixed key, mixed value)",
+                "desc": "修改弱表",
+                "usage": "wt.set(\"key\", {})"
+            },
+            {
+                "id": 4,
+                "proto": "bool weak_table_instance.erase(mixed key)",
+                "desc": "删除弱表元素",
+                "usage": "wt.erase(\"key\");"
+            },
+            {
+                "id": 5,
+                "proto": "bool weak_table_instance.lock()",
+                "desc": "弱表转换为map",
+                "usage": "map m = wt.lock();"
+            },
+            {
+                "id": 6,
+                "proto": "int weak_table_instance.size()",
+                "desc": "获取弱表大小",
+                "usage": "int size = wt.size();"
+            },
+            {
+                "id": 7,
+                "proto": "int weak_table_instance.clear_weakrefs(bool force_clear = true)",
+                "desc": "清理弱表",
+                "usage": "wt.clear_weakrefs();"
+            },
+]
+
+<ExternalApiTable list={weakref_apis} />
+
+### 实现
+
+当有弱引用指向对象时，WeakState状态变量用于控制对象的回收。
+
++ NORMAL状态表示本轮GC时对象强可达。
++ DELETING状态是回收的中间状态，在GC是如果回收器线程发现对象不再（强）可达时，将对象状态从NORMAL状态变成DELETING；但由于变更者线程在并发地执行，因此不可确保DELETING状态下的对象可以安全回收。
++ DELETED状态表示对象确定不再强可达，但仍然被弱引用，弱表需要主动置空弱引用。
+
+关键的状态转变由CAS原子操作确保正确性。
+
+1. 收集器（Collector）线程
+
++ MARKING阶段结束前，遍历所有弱引用，修改状态，并标记弱可达的对象，直到变更者置空弱引用：
+
+```
+foreach weak_table in weak_tables:
+  foreach weakref in weak_table:
+    if weakref->marked:
+      if weakref->state == DELETING:
+        weakref->state.cas(DELETING, NORMAL)
+    else:
+      if weakref->state == NORMAL:
+        weakref->state = DELETING
+      else if weakref->state == DELETING
+        weakref->state.cas(DELETING, DELETED) <--
+```
+
+2. 变更者（Mutator）线程：
+
++ 取元素成功将导致对象强可达：
+
+```
+get(weak_table, key)
+  weakref = ...
+
+  if weakref->state == NORMAL:
+    <-- 这里，collector有可能将对象的状态变为DELETING，但下一轮gc该对象会被标记，collector会把状态改回NORMAL
+    strongref = unbox(weakref)
+    return strongref
+
+  if weakref->state == DELETING:
+    weakref->state.cas(DELETING, NORMAL) <--
+
+  if weakref->state == DELETED:
+    clear weakref
+    return nil
+
+  strongref = unbox(weakref)
+  return strongref
+```
+
+@note 当对象的状态为DELETING时，对象仍然可能强可达。
+
++ 适时地清理弱表以置空弱引用：
+
+```
+clear_weak_table(weak_table)
+  foreach weakref in weak_table:
+    if weakref->state == DELETED:
+      clear weakref
+```
+
+### 使用经验
+
+#### 在嵌入式环境下，协调宿主程序GC。
+
+UEGS将GS集成到虚幻引擎中，使用弱引用表来管理代理对象。脚本层通过代理对象访问`UObject`，
+而UEGS运行时通过弱引用表来维护`UObject`到代理对象的映射关系，以避免影响到代理对象本身的生命周期。
+当代理对象被GS的垃圾收集器回收后，UEGS可以通过弱引用表探查到这一事件。
+UEGS使用一个async的全局弱引用表，并在虚幻引擎的GC委托函数中调用`clear_weakrefs`以清理该弱引用表。
+
+#### 封装成Weakref类型。
+
+```cpp
+class Weakref
+{
+    private weak_table wt = nil;
+
+    void __new(Weakref self, mixed val = nil)
+    {
+        self.wt = weak_table.create();
+        self.reset(val);
+    }
+
+    public mixed fetch(Weakref self)
+    {
+        return self.wt[0];
+    }
+
+    public void reset(Weakref self, mixed val = nil)
+    {
+        self.wt[0] = val;
+    }
+}
+```

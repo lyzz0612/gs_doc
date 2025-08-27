@@ -1,0 +1,9 @@
+{
+    "position": 4,
+    "label": "程序结构",
+    "collapsible": true,
+    "collapsed": false,
+    "customProps": {
+      "description": "This description can be used in the swizzled DocCard"
+    }
+}

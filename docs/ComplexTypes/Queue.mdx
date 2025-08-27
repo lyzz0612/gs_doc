@@ -1,0 +1,140 @@
+---
+sidebar_label: '队列'
+sidebar_position: 8
+---
+
+# queue
+
+queue译为队列，队列的操作是先进先出（FIFO）。
+
+与map、array相似，一个队列可以储存各种mixed类型的数据。
+
+不同的是，queue派生自handle，持有同步锁，作为一种消息同步机制广泛应用于跨域操作中。
+
+当一个协程向一个queue发送数据时，若queue已满，协程将会挂起并等待进入域；当协程向queue取数据时，若queue为空，协程将会挂起并等待。
+
+
+举个例子：
+
+```cpp title="queue_test.gs"
+readonly queue _login_queue;
+
+void do_login(array req)
+{
+	string name = req[0];
+	write(name ," login in.\n");
+	coroutine.sleep(1);
+}
+
+
+void login_daemon()
+{
+	while(true)
+	{
+		array req = _login_queue.receive();		
+		do_login(req);
+	}
+}
+
+void user_daemon(array login_request)
+{
+	write("usr " + login_request[1] + " send request.\n");
+	_login_queue.send_dup(login_request);
+}
+
+void test()
+{
+	//创建queue
+	_login_queue := queue.create("login_queue",5);
+	
+	//创建处理登录请求的协程
+	for(int i=0; i<2; i++)
+	{
+		string name = "login_daemon";
+		name += i;
+		domain d = domain.create(name);
+		coroutine co = coroutine.create_in_thread(name, d, (:login_daemon:));
+	}
+	
+	//创建发送登录请求的协程
+	for(int i=0; i<10; i++)
+	{
+		string name = "user";
+		name += i;
+		domain d = domain.create(name);
+		coroutine co = coroutine.create_in_thread(name, d, (:user_daemon,[name,i]:));
+	}	
+
+}
+
+test();
+```
+
+## queue常用的外部函数
+
+下面列出queue类型一些常用的外部函数以及用法。
+
+export const queue_apis = [
+            {
+                "id": 1,
+                "proto": "queue queue.create(string name, int size = 0)",
+                "desc": "创建队列",
+                "usage": "queue q = queue.create(\"queue\");"
+            },
+            {
+                "id": 2,
+                "proto": "bool queue_instance.send_raw(mixed val, object ft = nil, int priority = 16, mixed wait_time = -1)",
+                "desc": "原始数据入队",
+                "usage": "bool ret = q?.send_raw(func, ft, Priority.NORMAL, WAIT_FOREVER);"
+            },
+            {
+                "id": 3,
+                "proto": "bool queue_instance.send_dup(mixed val, object ft = nil, int priority = 16, mixed wait_time = -1)",
+                "desc": "深复制数据后入队",
+                "usage": "bool ret = q.send_dup({\"first\":1});"
+            },
+            {
+                "id": 4,
+                "proto": "int queue_instance.get_queue_size()",
+                "desc": "队列长度",
+                "usage": "int queue_size = q.get_queue_size(); // queue_size = 2"
+            },
+            {
+                "id": 5,
+                "proto": "mixed queue_instance.peek()",
+                "desc": "获取队头",
+                "usage": "mixed first_val = q.peek(); // first_val = \"hello\""
+            },
+            {
+                "id": 6,
+                "proto": "mixed queue_instance.peek_all()",
+                "desc": "获取所有元素",
+                "usage": "array vals = q.peek_all();"
+            },
+            {
+                "id": 7,
+                "proto": "mixed queue_instance.peek_n()",
+                "desc": "获取top n个元素",
+                "usage": "array vals = q.peek_n();"
+            },
+            {
+                "id": 8,
+                "proto": "mixed queue_instance.receive(int wait_time = -1)",
+                "desc": "获取队头数据",
+                "usage": "mixed first_val = q.receive();\nmixed second_val = q.receive(); // first_val = \"hello\" , second_val = {\"first\":1}"
+            },
+            {
+                "id": 9,
+                "proto": "bool queue_instance.receive_with_future(array out， int wait_time = -1)",
+                "desc": "获取队头数据",
+                "usage": "array out = [0, 0];\nbool flag = q.receive_with_future(out); // 成功获取时flag为true , out[0] = \"hello\", out[1] = nil"
+            },
+            {
+                "id": 10,
+                "proto": "int queue_instance.clear()",
+                "desc": "清空队列",
+                "usage": "int clear_numn = q.clear(); // 返回值为清除的数据数量"
+            }
+        ];
+
+<ExternalApiTable list={queue_apis} />

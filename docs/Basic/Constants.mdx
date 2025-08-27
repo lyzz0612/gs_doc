@@ -1,0 +1,434 @@
+---
+sidebar_label: '常量'
+sidebar_position: 3
+---
+
+# 常量
+
+##  const常量和enum枚举
+
+###  const常量类型
+常量使用关键字 const 定义，用于存储不会改变的数据。
+
+存储在常量中的数据类型可以是bool, int,string,map等。
+
+常量的定义格式：`const [type] identifier = value`
+
+例如
+```js
+const map EQUIP_NAME = {
+"weapon":"武器",
+ "cloth" : "防具",
+    "accessories" : "饰品",
+    "shoes" : "鞋子",
+    "fabao" : "法宝",
+    "gubao" : "古宝"
+};
+
+const string str = "Hello World";
+
+```
+常量的值必须是能够在编译时就能够确定的；你可以在其赋值表达式中涉及计算过程，但是所有用于计算的值必须在编译期间就能获得。
+
+正确的做法：const int c1 = 2+3
+错误的做法：const int c2 = getNumber()
+
+### enum枚举类型
+enum 是枚举类型，是int的子类型，主要是将相同类别不同特征的一类东西放在一起，方便取值调用。
+enum 的type_name是map，其功能与map有点类似（*key是特征名，val是int类型数值，默认从0递增*），用法与C类似。
+enum的基本语法格式如下：
+```js
+// 无描述enum
+enum enum_name
+{
+    value1 = constant1,
+    value2 = constant2,
+    value3 = constant3,
+    ...
+}
+
+// 有描述enum
+enum enum_name
+{
+    value1 = constant1:"enum_memo_str1",
+    value2 = constant2:"enum_memo_str2",
+    value3 = constant3:"enum_memo_str3",
+    ...
+}
+```
+* 注意：
+  * enum_name是 enum 的名称，必须是一个合法的标识符
+  * valueN 是枚举项，也应当是一个合法的标识符，通常使用大写蛇形命名法，以便于区分。
+  * constantN 是枚举项的值，如果不指定，则为上一个枚举项的值加1。如果是首个枚举项，则为0。
+  * enum_memo_str 是枚举项的描述，通常是字符串类型的常量，可以不指定。
+
+enum 类型都有对应的信息表，定义的枚举类型名称本身就是此常量表。可以通过此常量表获取枚举的相关信息：
+
+```cpp
+enum AAA
+{
+    aaa = 1:"aaa",
+    bbb = 2,
+    ccc = 3,
+}
+write(AAA);
+// 输出如下:
+// { /* sizeof() == 4 */
+//     "__reverse_enum_map__" : { /* sizeof() == 2 */
+//         1 : "aaa",
+//         2 : "bbb",
+//     },
+//     "__memo__" : { /* sizeof() == 1 */
+//         AAA.aaa(1) @ /test/test.gs : "aaa",
+//     },
+//     "aaa" : AAA.aaa(1) @ /test/test.gs,
+//     "bbb" : AAA.bbb(2) @ /test/test.gs,
+// }
+```
+
+举个一般的enum例子：
+```js
+enum State
+{
+    IDLE = 10,
+    RUN,
+    WAIT = 35,
+    EAT,
+    DRINK,
+};
+bool falg = (State.IDLE == 10); // flag = true
+```
+此时 State对应的value和constant分别为：
+```js
+"IDLE" : 10,
+"RUN" : 11,
+"WAIT" : 35,
+"EAT" : 36,
+"DRINK" : 37,
+```
+
+带有注释enum例子：
+```js
+enum AAA
+{
+    aaa = 1:"aaa",
+    bbb = 2:"bbb",
+    ccc = 3,
+}
+write(AAA);
+```
+此时输出如下：
+```js
+{ /* sizeof() == 5 */
+    "__reverse_enum_map__" : { /* sizeof() == 3 */
+        1 : "aaa",
+        2 : "bbb",
+        3 : "ccc",
+    },
+    "__memo__" : { /* sizeof() == 2 */
+        AAA.aaa(1) @ /test/test.gs : "aaa",
+        AAA.bbb(2) @ /test/test.gs : "bbb",
+    },
+    "aaa" : AAA.aaa(1) @ /test/test.gs,
+    "bbb" : AAA.bbb(2) @ /test/test.gs,
+    "ccc" : AAA.ccc(3) @ /test/test.gs,
+}
+```
+
+---
+
+### enum常用的外部函数
+
+下面列出enum类型一些常用的外部函数以及用法(基于以上State)。
+
+export const enum_apis = [
+    {
+        "id": 1,
+        "proto": "mixed get_enum_name(string enum_name, int val)",
+        "desc": "特征名",
+        "usage": "get_enum_name(\"State\", 11); // 得到 RUN"
+    },
+    {
+        "id": 2,
+        "proto": "mixed get_enum_info(string enum_name, mixed key_or_val)",
+        "desc": "特征信息",
+        "usage": "get_enum_info(\"State\", 10); // 输出在表格下面"
+    },
+    {
+        "id": 3,
+        "proto": "mixed get_enum_data(string enum_name, mixed enum_module = nil)",
+        "desc": "所有数据",
+        "usage": "get_enum_data(\"State\"); // 输出在表格下面"
+    },
+    {
+        "id": 4,
+        "proto": "bool is_enum(mixed val)",
+        "desc": "是否enum",
+        "usage": "bool flag = is_enum(State.IDLE); // flag = true"
+    }
+];
+
+<ExternalApiTable list={enum_apis} />
+
+---
+
+:::note
+
+第2项输出为：
+```bash
+{ /* sizeof() == 2 */
+    "name" : "IDLE",
+    "value" : State.IDLE(10) @ /simple.gs,
+}
+```
+:::
+
+:::note
+
+第3项输出为：
+```bash
+{ /* sizeof() == 6 */
+    "IDLE" : State.IDLE(10) @ /simple.gs,
+    "RUN" : State.RUN(11) @ /simple.gs,
+    "WAIT" : State.WAIT(35) @ /simple.gs,
+    "EAT" : State.EAT(36) @ /simple.gs,
+    "DRINK" : State.DRINK(37) @ /simple.gs,
+    "__reverse_enum_map__" : { /* sizeof() == 5 */
+        10 : "IDLE",
+        11 : "RUN",
+        35 : "WAIT",
+        36 : "EAT",
+        37 : "DRINK",
+    },
+}
+```
+
+:::
+
+
+### gs语言内置的enum
+
+`shell > 'get_all_enums()`
+
+```
+    { /* sizeof() == 3 */
+        "id" : 1,
+        "name" : "bool",
+        "module" : "/#e/bool.gs",
+    },
+    { /* sizeof() == 3 */
+        "id" : 2,
+        "name" : "ErrorCode",
+        "module" : "/#e/ErrorCode.gs",
+    },
+    { /* sizeof() == 3 */
+        "id" : 3,
+        "name" : "ValueType",
+        "module" : "/#e/ValueType.gs",
+    },
+    { /* sizeof() == 3 */
+        "id" : 4,
+        "name" : "HandleState",
+        "module" : "/#e/HandleState.gs",
+    },
+    { /* sizeof() == 3 */
+        "id" : 5,
+        "name" : "UnitChangedState",
+        "module" : "/#e/UnitChangedState.gs",
+    },
+    { /* sizeof() == 3 */
+        "id" : 6,
+        "name" : "HandleEvtType",
+        "module" : "/#e/HandleEvtType.gs",
+    },
+    { /* sizeof() == 3 */
+        "id" : 7,
+        "name" : "CallType",
+        "module" : "/#e/CallType.gs",
+    },
+    { /* sizeof() == 3 */
+        "id" : 8,
+        "name" : "ObjectState",
+        "module" : "/#e/ObjectState.gs",
+    },
+    { /* sizeof() == 3 */
+        "id" : 9,
+        "name" : "ProgramAttrib",
+        "module" : "/#e/ProgramAttrib.gs",
+    },
+    { /* sizeof() == 3 */
+        "id" : 10,
+        "name" : "CoAttrib",
+        "module" : "/#e/CoAttrib.gs",
+    },
+    { /* sizeof() == 3 */
+        "id" : 11,
+        "name" : "Priority",
+        "module" : "/#e/Priority.gs",
+    },
+    { /* sizeof() == 3 */
+        "id" : 12,
+        "name" : "WaitRet",
+        "module" : "/#e/WaitRet.gs",
+    },
+    { /* sizeof() == 3 */
+        "id" : 13,
+        "name" : "CoState",
+        "module" : "/#e/CoState.gs",
+    },
+    { /* sizeof() == 3 */
+        "id" : 14,
+        "name" : "NumLimit",
+        "module" : "/#e/NumLimit.gs",
+    },
+    { /* sizeof() == 3 */
+        "id" : 15,
+        "name" : "Iterator",
+        "module" : "/#e/Iterator.gs",
+    },
+    { /* sizeof() == 3 */
+        "id" : 16,
+        "name" : "SortType",
+        "module" : "/#e/SortType.gs",
+    },
+    { /* sizeof() == 3 */
+        "id" : 17,
+        "name" : "TrimType",
+        "module" : "/#e/TrimType.gs",
+    },
+    { /* sizeof() == 3 */
+        "id" : 18,
+        "name" : "TimeType",
+        "module" : "/#e/TimeType.gs",
+    },
+    { /* sizeof() == 3 */
+        "id" : 19,
+        "name" : "SaveValue",
+        "module" : "/#e/SaveValue.gs",
+    },
+    { /* sizeof() == 3 */
+        "id" : 20,
+        "name" : "ReferenceType",
+        "module" : "/#e/ReferenceType.gs",
+    },
+    { /* sizeof() == 3 */
+        "id" : 21,
+        "name" : "SeekOrigin",
+        "module" : "/#e/SeekOrigin.gs",
+    },
+    { /* sizeof() == 3 */
+        "id" : 22,
+        "name" : "DeviceFd",
+        "module" : "/#e/DeviceFd.gs",
+    },
+    { /* sizeof() == 3 */
+        "id" : 23,
+        "name" : "IOError",
+        "module" : "/#e/IOError.gs",
+    },
+    { /* sizeof() == 3 */
+        "id" : 24,
+        "name" : "SockDomain",
+        "module" : "/#e/SockDomain.gs",
+    },
+    { /* sizeof() == 3 */
+        "id" : 25,
+        "name" : "SockType",
+        "module" : "/#e/SockType.gs",
+    },
+    { /* sizeof() == 3 */
+        "id" : 26,
+        "name" : "SockOptLevel",
+        "module" : "/#e/SockOptLevel.gs",
+    },
+    { /* sizeof() == 3 */
+        "id" : 27,
+        "name" : "SockOpt",
+        "module" : "/#e/SockOpt.gs",
+    },
+    { /* sizeof() == 3 */
+        "id" : 28,
+        "name" : "SockParam",
+        "module" : "/#e/SockParam.gs",
+    },
+    { /* sizeof() == 3 */
+        "id" : 29,
+        "name" : "CType",
+        "module" : "/#e/CType.gs",
+    },
+    { /* sizeof() == 3 */
+        "id" : 30,
+        "name" : "PendingMode",
+        "module" : "/#e/PendingMode.gs",
+    },
+    { /* sizeof() == 3 */
+        "id" : 31,
+        "name" : "TypeDesc",
+        "module" : "/#e/TypeDesc.gs",
+    },
+    { /* sizeof() == 3 */
+        "id" : 32,
+        "name" : "CompressMode",
+        "module" : "/#e/CompressMode.gs",
+    },
+    { /* sizeof() == 3 */
+        "id" : 33,
+        "name" : "Crypt",
+        "module" : "/#e/Crypt.gs",
+    },
+    { /* sizeof() == 3 */
+        "id" : 34,
+        "name" : "PktField",
+        "module" : "/#e/PktField.gs",
+    },
+    { /* sizeof() == 3 */
+        "id" : 35,
+        "name" : "PktEncapsType",
+        "module" : "/#e/PktEncapsType.gs",
+    },
+    { /* sizeof() == 3 */
+        "id" : 36,
+        "name" : "PortFlags",
+        "module" : "/#e/PortFlags.gs",
+    },
+    { /* sizeof() == 3 */
+        "id" : 37,
+        "name" : "RegexFlags",
+        "module" : "/#e/RegexFlags.gs",
+    },
+    { /* sizeof() == 3 */
+        "id" : 38,
+        "name" : "Xml",
+        "module" : "/#e/Xml.gs",
+    },
+    { /* sizeof() == 3 */
+        "id" : 39,
+        "name" : "ByteSize",
+        "module" : "/builtin/ffi/gsffi.gs",
+    },
+    { /* sizeof() == 3 */
+        "id" : 40,
+        "name" : "ArgType",
+        "module" : "/gs/util/input_args.gs",
+    },
+    { /* sizeof() == 3 */
+        "id" : 41,
+        "name" : "TIFF_TAG",
+        "module" : "/gs/util/jpeg_exif.gs",
+    },
+    { /* sizeof() == 3 */
+        "id" : 42,
+        "name" : "GPS_TAG",
+        "module" : "/gs/util/jpeg_exif.gs",
+    },
+    { /* sizeof() == 3 */
+        "id" : 43,
+        "name" : "LogLevel",
+        "module" : "/gs/util/trace.gs",
+    },
+    { /* sizeof() == 3 */
+        "id" : 44,
+        "name" : "Trim",
+        "module" : "/gs/lang/string.gs",
+    },
+```

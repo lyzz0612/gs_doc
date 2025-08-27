@@ -1,0 +1,95 @@
+---
+sidebar_label: '域共享数据'
+sidebar_position: 17
+---
+
+# domain_value
+
+## 基础说明
+
+domain_value 是一个用于在指定域持有一个值的容器。任何对
+domain_value 中储存值的访问操作，都需要在指定的域内完成。
+
+从使用目的来说，domain_value 类似 share_value，都用于储
+存一个允许在不同域中有限制地共享的值。但 domain_value 为
+开发者提供了一条不需要额外复制来访问共享值的方式——只需要
+在指定的域内访问 domain_value 即可。
+
+## 用法示例
+
+```js
+// 基础用法
+domain_value dv = domain_value.allocate("example", [1, "hello", nil]);
+// 在当前域访问 domain_value 的值
+mixed value = dv.get_raw(); // 获取值
+// 在当前域设置 domain_value 的值
+dv.set_raw([2, "world", nil]); // 设置值
+// 在当前域执行一个函数，传入 domain_value 的值
+mixed result = dv.lock_do((mixed val) { return val[0]; }); // 返回第一个元素
+// 释放 domain_value
+domain_value.free(dv); // 关闭 domain_value
+```
+
+## domain_value常用的外部函数
+
+下面列出domain_value类型一些常用的外部函数以及用法。
+
+
+export const domain_value_apis = [
+            {
+                "id": 1,
+                "proto": "handle domain_value.allocate(string name, mixed val, domain d = nil)",
+                "desc": "创建一个位于指定域的 domain_value，如果不指定域，则默认为在当前域创建，如果在不同的域上创建，则复制给定的初始值。",
+                "usage": "domain_value dv = domain_value.allocate(\"example\", [1, \"hello\", nil]);"
+            },
+            {
+                "id": 2,
+                "proto": "void domain_value.free(domain_value h)",
+                "desc": "关闭一个 domain_value，如同调用其 close 方法",
+                "usage": "domain_value.free(dv);"
+            },
+            {
+                "id": 3,
+                "proto": "mixed domain_value.get(domain_value h)",
+                "desc": "获取 domain_value 中储存的值，如果当前域与 domain_value 所在域不同，值会被复制",
+                "usage": "mixed value = dv.get();"
+            },
+            {
+                "id": 4,
+                "proto": "void domain_value.set(domain_value h, mixed val)",
+                "desc": "设置 domain_value 中储存的值，如果当前域与 domain_value 所在域不同，值会被复制",
+                "usage": "dv.set([2, \"world\", nil]);"
+            },
+            {
+                "id": 5,
+                "proto": "mixed domain_value.get_dup(domain_value h)",
+                "desc": "获取 domain_value 中储存的值，并复制一份返回",
+                "usage": "mixed value = dv.get_dup();"
+            },
+            {
+                "id": 6,
+                "proto": "void domain_value.set_dup(domain_value h, mixed val)",
+                "desc": "设置 domain_value 中储存的值，并复制一份到当前域",
+                "usage": "dv.set_dup([3, \"new value\", nil]);"
+            },
+            {
+                "id": 7,
+                "proto": "mixed domain_value.get_raw(domain_value h)",
+                "desc": "获取 domain_value 中储存的值，不进行复制，直接返回储存的值的原件；如果当前域与 domain_value 所在域不同，则会抛出异常",
+                "usage": "mixed value = dv.get_raw(); // 注意：如果当前域与 dv 所在域不同，这将抛出异常"
+            },
+            {
+                "id": 8,
+                "proto": "void domain_value.set_raw(domain_value h, mixed val)",
+                "desc": "设置 domain_value 中储存的值，不进行复制，直接写入到储存的值；如果当前域与 domain_value 所在域不同，则会抛出异常",
+                "usage": "dv.set_raw([4, \"raw value\", nil]); // 注意：如果当前域与 dv 所在域不同，这将抛出异常"
+            },
+            {
+                "id": 9,
+                "proto": "mixed domain_value.lock_do(domain_value h, function f)",
+                "desc": "在 domain_value 所在域中执行一个函数 f(以domain_value所持有的值作为参数)，并返回其结果。函数 f 必须能够被在 domain_value 的域上执行。",
+                "usage": "mixed result = dv.lock_do((mixed val) { return val[0]; }); // 在 dv 所在域访问其值，并返回第一个元素"
+            }
+        ];
+
+<ExternalApiTable list={domain_value_apis} />

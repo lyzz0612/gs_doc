@@ -1,0 +1,326 @@
+---
+sidebar_label: 'Readonly和Parallel'
+sidebar_position: 6
+---
+
+# Readonly和Parallel
+
+:::tip
+注意：向 readonly 或 parallel 变量赋值需使用 ':=' 符号而不是 '=' 符号
+:::
+
+## 概述
+对应GS中readonly和parallell两个关键字
+readonly可以修饰成员变量
+parallel可以修饰成员变量和方法
+
+## 只读变量
+- readonly的变量，每次赋值都会深拷贝，如果写得很频繁，开销很大，出现过很多次ro变量频繁赋值导致的性能问题，看实际底层实现的代码不难发现，每次RO赋值时的深拷贝
+
+```cpp
+void VmBase::do_RO_ASSIGN(Object* this_ob, ValueType type, ValueSubType sub_type, ValueAttrib attr, Value* p1, Value* p2)
+{
+    // RO assign do not need to call check_before_write,
+    // since multiple assignments in different threads may occur 
+    // at the same time, which will cause assertion in check_before_write
+    // Call this_ob->_check_after_written_no_assert() directly
+
+    // Assign to readonly object's var
+    // Allocate new readonly value if the value is reference value
+    if (p2->is_reference_value() && p2->m_reference->is_modifiable())
+    {
+        // Clone the source value & make it readonly
+        auto* current_domain = Coroutine::get_current_co_domain();
+        CO_VALUE(cloned_val);
+        p2->clone_entirely(&cloned_val, current_domain, current_domain);
+        ReferenceRoParallel::make_readonly(&cloned_val);
+        _check_and_assign(type, sub_type, attr, p1, &cloned_val);
+    }
+    else
+        _check_and_assign(type, sub_type, attr, p1, p2);
+
+    // Notify this_ob was changed if it an old unit
+    this_ob->_check_after_written_no_assert();
+}
+```
+
+举个例子：
+
+```cpp
+map m = get_system_info();
+
+void run()
+{
+    map s = get_system_info();
+    int t = time.time_ms();
+    for (int i = 1 upto 1000000)
+        m = s;
+    t = time.time_ms() - t;
+    printf("t = %dms\n", t);
+}
+
+run();
+```
+
+输出结果是：
+
+```
+t = 12ms
+```
+
+```cpp
+readonly map m := get_system_info();
+
+void run()
+{
+    map s = get_system_info();
+    int t = time.time_ms();
+    for (int i = 1 upto 1000000)
+        m := s;
+    t = time.time_ms() - t;
+    printf("t = %dms\n", t);
+}
+
+run();
+```
+
+输出结果是：
+
+```
+t = 1273ms
+```
+
+## 并行变量
+
+- parallel变量，如果是个容器(map或者array)，可以并行读写容器中的某个元素，但是如果容器本身要改变（添加或减少元素）就需要重新类似RO变量那样做一次深拷贝
+- parallel变量实现的目的就是改进RO变量的性能，在很多场景下，我们容器中元素的数量是稳定的，只是元素要频繁变动，这种情况没必要每次写都深拷贝，可以使用share_value，但是使用起来麻烦，并且也有读写加锁的开销，及时有读写锁，还是比直接访问慢不少
+- 举个例子，我们把每一段的结果分别存起来，存在一个数组中，这是个比较常见的应用场景
+
+```cpp
+#pragma parallel
+
+const int SLICE = 10;
+parallel array _multi_results := make_parallel(array.allocate(SLICE, 0));
+
+int run()
+{
+    int step = 10000;
+    int co_num = SLICE;
+    array cos = [];
+    for (int i = 1 upto co_num)
+        cos.push_back(coroutine.create_with_domain(0, domain.create(), (: foo, i - 1, (i - 1) * step, i * step - 1 :)));
+
+    printf("Calc prime num (%d)\n", step * co_num);
+    int t = time.time_ms();
+    int sum = 0;
+    for (coroutine co : cos)
+    {
+        co.wait();
+        sum += co.get_ret();
+    }
+    printf("ret = %d, cost = %dms\n", sum, time.time_ms() - t);
+    printf("rets = %O\n", _multi_results);
+    return sum;
+}
+
+int foo(int n, int from, int to)
+{
+    int num = 0;
+    for (int i = from; i <= to; ++i)
+        if (is_prime(i))
+            num ++;
+
+    _multi_results[n] := num;
+    return num;
+}
+
+bool is_prime(int v)
+{
+    if (v < 2)
+        return false;
+
+    for (int i = 2 upto v - 1)
+        if (v % i == 0)
+            return false;
+    return true;
+}
+
+run();
+```
+
+关于性能方面，有些情况下会比RO变量好非常多
+readonly map m := get_system_info();
+
+```cpp
+void run()
+{
+    int t = time.time_ms();
+    for (int i = 1 upto 1000000)
+    {
+        m := m + {"jit_type" : i};
+    }
+    t = time.time_ms() - t;
+    printf("t = %dms\n", t);
+}
+
+run();
+```
+
+运行结果是：
+```
+t = 2540ms
+```
+
+```cpp
+parallel map m := make_parallel(get_system_info());
+
+void run()
+{
+    int t = time.time_ms();
+    for (int i = 1 upto 1000000)
+    {
+        m["jit_type"] := i;
+    }
+    t = time.time_ms() - t;
+    printf("t = %dms\n", t);
+}
+
+run();
+```
+
+运行结果是：
+
+```
+t = 25ms
+```
+
+如果需要检查一个map/array等是否是parallel或是readonly的，gs提供了 `is_modifiable_value` 和 `is_parallel_value` 方法。所有有关parallel和readonly的方法和对应的功能见下表：
+
+|序号|函数原型|函数作用|
+|:---:|---|---|
+| 1 | `bool is_parallel_value(mixed val)` | 检查给定值是否为parallel |
+| 2 | `bool is_modifiable_value(mixed val)` | 如果给定值不是readonly则返回true，否则返回false |
+| 3 | `bool is_readonly_value(mixed val)` | `(1.3.221127之后引入)` 检查给定值是否为readonly |
+| 4 | `mixed make_parallel(mixed value)` | 将给定引用类型值转换为parallel的，若传入的值不是引用类型，则发生错误 |
+| 5 | `mixed make_readonly(mixed value)` | 将给定引用类型值转换为readonly的，若传入的值不是引用类型，则发生错误 |
+| 6 | `mixed mixed.make_parallel_dup(mixed val)` | `(1.3.221127之后引入，需import gs.lang.mixed)` 若给定的值是引用类型，则返回make_parallel(val.deep_dup())，否则直接返回val |
+| 7 | `mixed mixed.make_readonly_dup(mixed val)` | `(1.3.221127之后引入，需import gs.lang.mixed)` 若给定的值是引用类型，则返回make_readonly(val.deep_dup())，否则直接返回val |
+
+## 并行方法
+  - 定义：在RO对象中（有#pragma parallel的对象）中的方法，或者方法声明时带了parallel修饰是并行方法，调用并行方法不需要跨域，不同的协程可以进行并行调用
+  - 限制：在普通RW对象中的parallel方法不能访问普通（非readonly或者parallel）的成员变量
+  - 目的：利用多线程并行计算进行优化
+  - 难点：函数变量的参数域，具体参考： 函数变量的参数域
+    - 设计初衷：底层增加限制，确保不会因为跨域拷贝，导致行为和直觉不符，比如一个函数会改变栈上的变量，那么我们希望不管怎么传，传到哪个域，有没有拷贝，这个函数都被调用的时候都能改变这个栈上的变量，否则行为和直觉就会违背
+性能简单测试下：
+
+```c
+string src = """P
+public void foo() {}
+public parallel void foo_parallel() {}
+"""P;
+
+void run()
+{
+    compile_program("/xx.gs", src);
+    object ob = new_object("/xx.gs", domain.create());
+    int t = time.time_ms();
+    for (int i = 1 upto 5000000)
+        ob.foo_parallel();
+    t = time.time_ms() - t;
+    printf("t = %dms\n", t);
+}
+
+run();
+```
+
+运行结果是：
+
+```
+t = 142ms
+```
+
+```c
+string src = """P
+public void foo() {}
+public parallel void foo_parallel() {}
+"""P;
+
+void run()
+{
+    compile_program("/xx.gs", src);
+    object ob = new_object("/xx.gs", domain.create());
+    int t = time.time_ms();
+    for (int i = 1 upto 5000000)
+        ob=>foo();
+    t = time.time_ms() - t;
+    printf("t = %dms\n", t);
+}
+
+run();
+```
+
+运行结果是：
+
+```
+t = 384ms
+```
+
+这种简单调用的情况下确实快不少，但是快得也有限
+换一种情况，如果我们有个map要作为参数呢？
+
+```c
+string src = """P
+public void foo(mixed m) {}
+public parallel void foo_parallel(mixed m) {}
+"""P;
+
+void run()
+{
+    compile_program("/xx.gs", src);
+    object ob = new_object("/xx.gs", domain.create());
+    int t = time.time_ms();
+    map m = get_system_info();
+    for (int i = 1 upto 5000000)
+        ob.foo_parallel(m);
+    t = time.time_ms() - t;
+    printf("t = %dms\n", t);
+}
+
+run();
+```
+
+运行结果是：
+
+```
+t = 196ms
+```
+
+看上去和不传参数也差不多，再试试跨域的版本
+
+```c
+string src = """P
+public void foo(mixed m) {}
+public parallel void foo_parallel(mixed m) {}
+"""P;
+
+void run()
+{
+    compile_program("/xx.gs", src);
+    object ob = new_object("/xx.gs", domain.create());
+    int t = time.time_ms();
+    map m = get_system_info();
+    for (int i = 1 upto 5000000)
+        ob=>foo(m);
+    t = time.time_ms() - t;
+    printf("t = %dms\n", t);
+}
+
+run();
+```
+
+运行结果是，有质的差别，主要就在于跨域需要dup参数
+
+```
+t = 4746ms
+```

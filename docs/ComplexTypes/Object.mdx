@@ -1,0 +1,382 @@
+---
+sidebar_label: '对象（object）'
+sidebar_position: 4
+---
+
+# 对象（object）
+
+在GS中，对象（object）是一个包含有成员变量和方法的模块。在编写`.gs`文件时，实际上就是在描述一个对象的`原型`。
+
+object可以从文件中加载（使用load_static加载`原型`），也可以通过原型创建出新的object副本（使用new_object）。
+
+与其他面向对象语言中的对象不同的是，object的变量是无法从外部访问的。开发者需要在object中提供接口函数。其他地方的程序能够访问这些函数来对object进行操作。
+
+* P.S.
+  * 需要特别注意的是，GS的object被设计用于表达一个较大规模的、拥有较长生命周期的数据和方法集合，绝大多数情况下创建出的object并不会立即被回收。因此出于性能考虑，GC不会对object做频繁的检测，GS中的对象在创建之后 **必须** 手动调用destruct_object方法进行回收，否则可能存在内存的浪费，严重情况下可能导致内存资源耗尽引发的崩溃。
+  * 如果需要一个类似object、不需要手动释放的“对象”，请尝试使用map或者新版本GS的class_map。
+
+## object例子简单讲解
+
+前文中已经提到，`load_static`可以用于从文件中加载object的原型：
+
+```cpp
+import .example;
+
+// ...
+example.xxxx(); // 这个操作也将会尝试 load_static example
+object origin_obj_2 = load_static("./example.gs", this_domain());
+object origin_obj_1 = load_static(example, this_domain()); 
+// ...
+
+```
+
+若 load_static 正在首次加载原型，那么这份文件就会被编译并最终生成一个`原型`object，此后对相同文件进行 load_static 都将直接返回这份原型。如上代码中，由于`example`和`"./example.gs"`实际上是相同的文件，因此 origin_obj_1 与 origin_obj_2 会是同一个object。
+
+---------------
+
+加载完对象原型之后，可以通过 new_object 函数创建一个新的对象：
+
+```cpp
+
+object new_obj_1 = new_object(example, this_domain());
+object new_obj_2 = new_object("./example.gs", this_domain());
+object new_obj_3 = new_object(origin_obj_1, this_domain());
+
+```
+new_object 会根据传入的参数1，找到`原型`来创建对象，因此上述三个 new_object 创建的都是`example`对象。
+
+在对象的创建（load_static & new_object）过程中，会自动地依次调用 `::entry` 和 `create()` 来对对象进行初始化操作。可以通过手动声明 `create` 函数的方式让对象在创建时执行一些初始化逻辑。
+
+在对象（因为GC或手动关闭）销毁时，会调用 `destruct` 函数。
+
+```cpp title="example.gs"
+
+void create(string msg) 
+{
+    // create 函数 *最多* 可以传入 *一个* 构造参数
+    // 参数在 load_static 或 new_object 时传入。
+    printf("On create: %s.\n", msg);
+}
+
+void destruct()
+{
+    printf("On destruct.\n");
+}
+
+printf("On ::entry.\n");
+```
+
+```cpp title="source.gs"
+import .example;
+
+load_static(example, this_domain(), "load_static()");
+
+new_object(example, this_domain(), "new_object()");
+
+destruct_object(example);
+
+```
+
+输出结果：
+```
+On ::entry.
+On create: load_static().
+On ::entry.
+On create: new_object().
+On destruct.
+```
+
+比较完整的例子：
+
+```cpp title="obj.gs"
+int count = 0;
+void create()
+{
+    write("Create an object\n");
+}
+
+private void sub_count()                // 私有函数作用：count - 1
+{
+    count --;
+    write("count == ", count, "\n");    // 输出 count
+}
+public void add_count()                 // 公有函数作用：count + 1
+{
+    count ++ ;
+    write("count == ", count, "\n");    // 输出 count
+}
+
+public int get_count()                  // 获取count的值
+{
+    return count;
+}
+```
+
+```cpp title="test.gs"
+object obj1 = load_static("obj.gs",this_domain());  // 此时执行create(), 输出 "Create an object"， count = 0
+obj1.add_count();                                   // count = count + 1 = 1
+write(obj1.get_count());                            // 输出 1
+obj1.?sub_count();                                  // .?调用，如果函数不存在于对象也不会报错。此处因为调用私有函数，所以不执行也不报错
+write(obj1.get_count());                            // 还是输出 1
+```
+
+---
+
+## object常用的外部函数
+
+下面列出object类型一些常用的外部函数以及用法。
+
+export const object_apis = [
+            {
+                "id": 1,
+                "proto": "object load_static(string path, mixed domain, mixed para = nil)",
+                "desc": "加载源对象",
+                "usage": "object obj = load_static(\"/test/source.gs\",this_domain());"
+            },
+            {
+                "id": 2,
+                "proto": "mixed new_object(mixed ob_or_path, mixed domain, mixed para = nil)",
+                "desc": "创建实例对象",
+                "usage": "object obj1 = new_object(obj, this_domain());"
+            },
+            {
+                "id": 3,
+                "proto": "bool is_object(mixed val)",
+                "desc": "是否为对象",
+                "usage": "bool flag = is_object(obj1); // flag = true"
+            },
+            {
+                "id": 4,
+                "proto": "string object_instance.name()",
+                "desc": "源文件路径",
+                "usage": "string path = obj.name(); // path = \"/test/source.gs\""
+            },
+            {
+                "id": 5,
+                "proto": "string object_instance.dir_name()",
+                "desc": "源文件目录",
+                "usage": "string path = obj.dir_name(); // path = \"/test/\""
+            },
+            {
+                "id": 6,
+                "proto": "string object_instance.pure_name()",
+                "desc": "源文件名字",
+                "usage": "string path = obj.pure_name(); // path = \"source.gs\""
+            },
+            {
+                "id": 7,
+                "proto": "ObjectState object_state(mixed val)",
+                "desc": "对象状态",
+                "usage": "write(object_state(obj)); // ObjectState.CREATED(1)"
+            },
+            {
+                "id": 8,
+                "proto": "array child_objects(mixed obj)",
+                "desc": "同源对象",
+                "usage": "array arr = child_objects(obj); // sizeof(arr) = 2  (arr包含obj和obj1)"
+            },
+            {
+                "id": 9,
+                "proto": "bool is_static_object(mixed obj = nil)",
+                "desc": "是否源对象",
+                "usage": "bool flag = is_static_object(obj1); // flag = false"
+            },
+            {
+                "id": 10,
+                "proto": "array object.get_all()",
+                "desc": "所有对象",
+                "usage": "array arr = object.get_all(); // arr是所有对象的数组"
+            },
+            {
+                "id": 11,
+                "proto": "map object_instance.info()",
+                "desc": "对象信息",
+                "usage": "map m = obj.info(); // m存储obj信息"
+            },
+            {
+                "id": 12,
+                "proto": "int destruct_object(mixed ob_or_path)",
+                "desc": "销毁对象",
+                "usage": "int desob = destruct_object(obj1); // 销毁obj1"
+            },
+            {
+                "id": 13,
+                "proto": "bool object_instance.is_destructed()",
+                "desc": "是否被销毁",
+                "usage": "bool flag = obj.is_destructed(); // flag = false"
+            },
+            {
+                "id": 14,
+                "proto": "bool object_instance.is_parallel()",
+                "desc": "是否并行",
+                "usage": "bool flag = obj.is_parallel(); // flag = false"
+            },
+            {
+                "id": 14,
+                "proto": "bool object_instance.is_readonly()",
+                "desc": "是否只读",
+                "usage": "bool flag = obj.is_readonly(); // flag = false"
+            },
+            {
+                "id": 15,
+                "proto": "object this_object()",
+                "desc": "返回本对象",
+                "usage": "object obj = this_object();"
+            },
+            {
+                "id": 16,
+                "proto": "bool object_instance.bind_post_queue(queue q)",
+                "desc": "绑定post队列",
+                "usage": "无"
+            },
+            {
+                "id": 17,
+                "proto": "bool object_instance.get_enable_post()",
+                "desc": "是否允许post",
+                "usage": "bool flag = obj.get_enable_post(); // flag = true(默认为true)"
+            },
+            {
+                "id": 18,
+                "proto": "void object_instance.set_enable_post(bool enable)",
+                "desc": "设置是否允许post",
+                "usage": "obj.set_enable_post(false);"
+            },
+            {
+                "id": 19,
+                "proto": "handle object_instance.get_post_queue()",
+                "desc": "返回post队列",
+                "usage": "queue q = obj.get_post_queue();"
+            },
+            {
+                "id": 20,
+                "proto": "mixed previous_object()",
+                "desc": "调用函数的对象",
+                "usage": "无"
+            },
+            {
+                "id": 21,
+                "proto": "void object_instance.wait_post_finish()",
+                "desc": "等待post队列函数运行结束",
+                "usage": "见表格下方例子"
+            },
+            {
+                "id": 22,
+                "proto": "array object_instance.get_components()",
+                "desc": "对象的组件",
+                "usage": "array arr = obj.get_components(); // arr = [\"/test/source.gs\"]"
+            },
+            {
+                "id": 23,
+                "proto": "domain object_instance.get_domain()",
+                "desc": "对象的域",
+                "usage": "domain d = obj.get_domain(); // 返回本域"
+            },
+            {
+                "id": 24,
+                "proto": "object object_instance.get_env_ob()",
+                "desc": "环境对象",
+                "usage": "object env_obj = obj.get_env_ob();"
+            },
+            {
+                "id": 25,
+                "proto": "object object_instance.set_env_ob(object env_ob)",
+                "desc": "设置环境对象",
+                "usage": "无"
+            },
+            {
+                "id": 26,
+                "proto": "function object_instance.get_function(string name, bool can_private = false)",
+                "desc": "对象的函数",
+                "usage": "function func = obj.get_function(\"print\"); // 没有这个函数时返回nil"
+            },
+            {
+                "id": 27,
+                "proto": "program object_instance.get_program()",
+                "desc": "对象的program",
+                "usage": "类似于类的概念，一个gs文件就是一个program"
+            },
+            {
+                "id": 28,
+                "proto": "bool object_instance.has_component(string component_name)",
+                "desc": "是否有特定component",
+                "usage": "bool flag = obj.has_component(\"/test/source.gs\"); // flag = true"
+            },
+            {
+                "id": 29,
+                "proto": "bool construct_object(object oid, mixed create_para = nil)",
+                "desc": "创建对象实例",
+                "usage": "object obj2 = new_object(obj, this_domain(), false);\nobj2.set_env_ob(env_obj);\nbool flag = construct_object(obj2);"
+            },
+            {
+                "id": 30,
+                "proto": "string dump_object(object obj)",
+                "desc": "对象信息",
+                "usage": "string info = dump_object(obj);"
+            },
+            {
+                "id": 31,
+                "proto": "object find_object(string name)",
+                "desc": "特定名字的对象",
+                "usage": "object obj2 = find_object(\"/test/source.gs\"); // obj2 == obj"
+            },
+            {
+                "id": 32,
+                "proto": "mixed object_instance.get_obj_component_var(string component_name, string var_name)",
+                "desc": "获得组件变量",
+                "usage": "无"
+            },
+            {
+                "id": 33,
+                "proto": "void object_instance.set_obj_component_var(string component_name, string var_name, mixed value)",
+                "desc": "设置组件变量",
+                "usage": "无"
+            }
+        ];
+
+<ExternalApiTable list={object_apis} />
+
+:::tip 注
+
+**第29项用于调用new_object()函数时设置auto_contruct参数为false后，此时对象并未构造。所以需要随后调用construct_object()函数来构造对象。**
+
+:::
+
+:::tip 注
+
+表格第七项获取到的对象状态（ObjectState）包括：
+```
+ObjectState.INVALID     if value is not object type or not found the object
+ObjectState.CREATING    if object is creating
+ObjectState.CREATED     if object is created
+ObjectState.DESTRUCTING if object is destructing
+ObjectState.DESTRUCTED  if object has been destructed
+```
+:::
+
+:::tip 注
+
+第21项例子
+```cpp title="obj.gs"
+int count = 0;
+
+public void add_count()                 // 公有函数作用：count + 1
+{
+    count ++ ;
+    write("count == ", count, "\n");    // 输出 count
+}
+
+public void show_count()                // 显示count的值
+{
+    write("count == ", count, "\n");
+}
+```
+
+```cpp title="main.gs"
+object obj = load_static("/obj.gs", this_domain());
+@obj.show_count();
+@obj.add_count();
+obj.wait_post_finish();
+
+write("program finish\n");              // 先执行show_count()和add_count()，然后输出"program finish"
+```
+:::

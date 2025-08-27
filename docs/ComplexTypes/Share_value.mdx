@@ -1,0 +1,280 @@
+---
+sidebar_label: '共享数据结构'
+sidebar_position: 12
+---
+
+# share_value
+
+## 基础说明
+
+* share_value可以看成是一个可多线程并行访问的容器，可以存放各种数据，其中数据受到share_value锁的保护
+* share_value要用于放在parallel对象中，提供无需跨域的高效的读写操作，share_value都应该是RO变量，用于并行访问，不然没有太大意义
+* 要读写share_value前，要进行try_lock操作：try_lock(sv) { }
+* try_lock也支持只读访问形式：try_lock(read : sv) {} ，这样可以多个线程并行处理，其底层实现是使用读写锁，但是这种读锁的方式只能使用有限的一些读方法，比如fetch_value，get等，不能使用如put_value，set这样的写方法
+* try_lock支持传入数组，一次性try_lock多个值
+
+:::danger 注意
+
+**请注意share_value的性能问题**  
+
+并不是在任何时候，share_value都能带来性能提升，它的put_value和fetch_value，每次都会**深拷贝**整个数据，如果其中存放的是个非常大的map或者array，会有巨大的性能开销
+
+:::
+
+## 用法示例
+```
+// 基础用法
+
+#pragma parallel
+
+readonly handle sv := share_value.allocate("unnamed", 0);
+
+// co1
+void add_value()                // 使用share_value之前必须要try_lock()
+{
+    try_lock(sv)
+    {
+        mixed val = sv.fetch_value();
+        sv.put_value(++val);
+    }
+}
+
+// co2
+void sub_value()                // 使用share_value之前必须要try_lock()
+{
+    try_lock(sv)
+    {
+        mixed val = sv.fetch_value();
+        sv.put_value(--val);
+    }
+}
+
+```
+
+---
+
+```
+// 读写锁用法
+
+#pragma parallel
+readonly share_value sv := share_value.allocate("sv", {});
+
+// 读可以并行
+mixed query(mixed k)
+{
+    try_lock(read : sv)
+    {
+        return sv.get(k);
+    }
+}
+
+// 写不能并行
+void write(mixed k, mixed v) 
+{
+    try_lock(sv)
+    {
+        sv.set(k, v);
+    }
+}
+```
+
+---
+
+```
+// 一次try_lock多个变量的示例
+
+#pragma parallel
+readonly share_value s1 := share_value.allocate("s1", {});
+readonly share_value s2 := share_value.allocate("s2", {});
+readonly share_value s3 := share_value.allocate("s3", {});
+
+void foo1(mixed v1, mixed v2, mixed v3) 
+{
+    // 同时锁3个share value的第一种方式
+    try_lock([s1, s2, s3])
+    {
+        s1.put_value(v1);
+        s2.put_value(v2);
+        s3.put_value(v3);
+    }
+
+    // 同时锁3个share value的第二种方式
+    try_lock(s1, s2, s3)
+    {
+        s1.put_value(v1);
+        s2.put_value(v2);
+        s3.put_value(v3);
+    }
+}
+```
+
+## share_value常用的外部函数
+
+下面列出share_value类型一些常用的外部函数以及用法。
+
+export const share_value_apis = [
+            {
+                "id": 1,
+                "proto": "handle share_value.allocate(string name, mixed val, int share_lock_level = 100)",
+                "desc": "创建share_value",
+                "usage": "handle sv = share_value.allocate(\"unnamed\", [1, \"hello\", nil]);"
+            },
+            {
+                "id": 2,
+                "proto": "mixed share_value_instance.fetch_value(handle id)",
+                "desc": "获取share_value的值",
+                "usage": "mixed val = sv.fetch_value(); // val = [1, \"hello\", nil]"
+            },
+            {
+                "id": 3,
+                "proto": "int share_value_instance.length(handle id, array? path = nil)",
+                "desc": "share_value大小",
+                "usage": "int size = sv.length(); // size = 2"
+            },
+            {
+                "id": 4,
+                "proto": "mixed share_value_instance.type(handle id, array? path = nil)",
+                "desc": "share_value类型",
+                "usage": "mixed type_name = sv.type(); // type_id = 12, (array)"
+            },
+            {
+                "id": 5,
+                "proto": "mixed share_value_instance.add(handle id, mixed val, array? path = nil)",
+                "desc": "加法/添加元素",
+                "usage": "mixed val = sv.add([[3]]); // val = [1, \"hello\", nil, [3]]"
+            },
+            {
+                "id": 6,
+                "proto": "mixed share_value_instance.sub(handle id, mixed val, array? path = nil)",
+                "desc": "减法/删除元素",
+                "usage": "mixed val = sv.sub([\"hello\"]); // val = [1, nil, [3]]"
+            },
+            {
+                "id": 7,
+                "proto": "mixed share_value_instance.clean_up(handle id, array? path = nil)",
+                "desc": "清除空值",
+                "usage": "mixed val = sv.clean_up(); // val = [1, [3]], 适用array/map"
+            },
+            {
+                "id": 8,
+                "proto": "mixed share_value_instance.insert(handle id, int pos, mixed value, array? path = nil)",
+                "desc": "插入元素",
+                "usage": "mixed val = sv.insert(1, \"world\"); // val = true, [1, \"world\",3], 适用array/buffer"
+            },
+            {
+                "id": 9,
+                "proto": "mixed share_value_instance.insert_n(handle id, int pos, array value, array? path = nil)",
+                "desc": "批量插入元素",
+                "usage": "mixed val = sv.insert_n(0, [1,0]); // val = true, [1, 0, 1, \"world\", 3]适用array"
+            },
+            {
+                "id": 10,
+                "proto": "mixed share_value_instance.delete_at(handle id, int pos, int n, array? path = nil)",
+                "desc": "删除位置元素",
+                "usage": "mixed val = sv.delete_at(3,1);\nval = true, [1, 0, 1, 3], 适用array/buffer"
+            },
+            {
+                "id": 11,
+                "proto": "mixed share_value_instance.find(handle id, mixed val, array? path = nil)",
+                "desc": "查找首次出现位置",
+                "usage": "mixed index = sv.find(1); // index = 0, 适用array/buffer"
+            },
+            {
+                "id": 12,
+                "proto": "mixed share_value_instance.get_range(handle id, int pos, int size, array? path = nil)",
+                "desc": "求子序列",
+                "usage": "mixed val = get_range(1,2); // val = [0,1], 适用array/buffer"
+            },
+            {
+                "id": 13,
+                "proto": "mixed share_value_instance.push_back(handle id, mixed value, array? path = nil)",
+                "desc": "后面添加元素",
+                "usage": "mixed val = sv.push_back(2); // val = true, [0, 1, 2], 适用array/buffer"
+            },
+            {
+                "id": 14,
+                "proto": "mixed share_value_instance.push_back_n(handle id, array value, array? path = nil)",
+                "desc": "后面批量添加元素",
+                "usage": "mixed val = sv.push_back_n([2,4]); // val = true, [0,1,2,2,4], 适用array"
+            },
+            {
+                "id": 15,
+                "proto": "mixed share_value_instance.lower_bound(handle id, mixed value, array? path = nil)",
+                "desc": "求下界(第一个小于等于)",
+                "usage": "mixed val = sv.lower_bound(2); // val = 1, 适用有序int"
+            },
+            {
+                "id": 16,
+                "proto": "mixed share_value_instance.upper_bound(handle id, mixed value, array? path = nil)",
+                "desc": "求上界(第一个大于)",
+                "usage": "mixed val = sv.upper_bound(1); // val = 2, 适用有序int"
+            },
+            {
+                "id": 17,
+                "proto": "mixed share_value_instance.clear(handle id, array? path = nil)",
+                "desc": "清除share_value的值",
+                "usage": "mixed val = sv.clear(); // val = true, nil, 适用array/map/buffer"
+            },
+            {
+                "id": 18,
+                "proto": "void share_value_instance.put_value(handle id, mixed val, array? path = nil)",
+                "desc": "设置或添加share_value的值",
+                "usage": "sv.put_valua({1:2, \"hello\":3, 4:\"world\"}); // sv.fetch_value() = {1:2, \"hello\":3, 4:\"world\"}"
+            },
+            {
+                "id": 19,
+                "proto": "array share_value_instance.keys(handle id, array? path = nil)",
+                "desc": "统计keys",
+                "usage": "array keys = sv.keys(); // keys = [1, \"hello\", 4], 适用map"
+            },
+            {
+                "id": 20,
+                "proto": "array share_value_instance.values(handle id, array? path = nil)",
+                "desc": "统计values",
+                "usage": "array values = sv.values(); // values = [2, 3, \"world\"], 适用map"
+            },
+            {
+                "id": 21,
+                "proto": "mixed share_value_instance.get(handle id, mixed pos_or_key, array? path = nil)",
+                "desc": "获取元素",
+                "usage": "mixed val = sv.get(\"hello\"); // val = 3, 适用array/map/buffer"
+            },
+            {
+                "id": 22,
+                "proto": "mixed share_value_instance.set(handle id, int pos, mixed value, array? path = nil)",
+                "desc": "设置元素",
+                "usage": "mixed val = sv.set(1, 2); // val = true, {1:2, \"hello\":2, 4:\"world\"}, 适用array/map/buffer"
+            },
+            {
+                "id": 23,
+                "proto": "mixed share_value_instance.delete_by_key(handle id, mixed value, array? path = nil)",
+                "desc": "根据key删除元素",
+                "usage": "mixed val = sv.delete_by_key(4); // val = true, {1:2, \"hello\":2}, 适用map"
+            },
+            {
+                "id": 24,
+                "proto": "mixed share_value_instance.delete_by_value(handle id, mixed value, array? path = nil)",
+                "desc": "根据value删除元素",
+                "usage": "mixed val = sv.delete_by_value(2); // val = true, {}, 适用map"
+            },
+            {
+                "id": 25,
+                "proto": "void share_value_instance.free()",
+                "desc": "释放share_value空间",
+                "usage": "sv.free(); // sv被回收"
+            },
+            {
+                "id": 26,
+                "proto": "void share_value_instance.lock_fetch_value()",
+                "desc": "锁定并获取值",
+                "usage": "sv.lock_fetch_value(); // sv中的值被取出，免try_lock"
+            },
+            {
+                "id": 27,
+                "proto": "void share_value_instance.lock_put_value(val)",
+                "desc": "锁定并设置值",
+                "usage": "sv.lock_put_value(5); // 设置sv的值，免try_lock"
+            }
+        ];
+
+<ExternalApiTable list={share_value_apis} />

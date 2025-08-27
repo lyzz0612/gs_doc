@@ -1,0 +1,165 @@
+---
+sidebar_label: 'Defer'
+sidebar_position: 4
+---
+
+# Defer关键字
+
+---
+
+**Gs**语言中的`defer`关键字所声明的代码（块）会在当前代码块退出时执行，提供一种延迟调用的方式，适合用来做一些资源释放、关闭文件、状态变更等操作
+
+在适当的地方使用`defer`能带来一些好处，比如：
+* 某个需要解锁或销毁资源的函数有多个返回出口时，使用`defer`语句能够进行统一处理，有效地减少了重复代码，也方便了未来添加代码时的维护成本
+* 在申请资源地方就近声明释放，可以减少后续忘记释放的可能性，比如我们open一个文件的时间经常忘了close掉，有了defer之后我们每次open一个文件接下来一条语句就是`defer fd.close()`
+
+## 使用
+
+defer关键字后可以接一个简单的语句或者接一整块代码，如：
+
+```cpp
+defer write("hello\n");
+```
+
+或者：
+
+```cpp
+defer
+{
+    int i = 0;
+    i++;
+    printf("i = %d\n", i);
+}
+```
+
+## 作用域和时机
+
+`defer`后面跟着的语句或者代码块都被看做是一个代码单元（闭包函数），都将在当前代码块退出的时候执行，代码单元中的变量的值是当前代码块退出时的值，所以使用`defer`关键字时需要特别注意作用域和执行时机以免代码的执行结果和自己的预期不一致。
+
+举个例子：
+
+```cpp title="defer_test.gs"
+int n = 4 , i = 0, j = 10;
+do 
+{
+    defer write("defer  ", j, "\n");
+    j ++;
+    write("source ", i,"\n");
+    i ++;
+} while(i < n);
+```
+
+最后的执行结果将是：
+
+```
+source 0
+defer  11
+source 1
+defer  12
+```
+
+每次循环结束（相当于当前代码块结束）才执行defer语句，而defer代码块中的变量`j`的值为结束循环时的值
+
+与**Go**语言`defer`关键字声明的函数在当前函数返回之前执行不同，Gs的`defer`语句在结束当前block时执行，即在`if`、`for`、`try`等代码块中的`defer`语句在离开这些代码块时就会执行：
+
+```cpp title="defer_timing.gs"
+int num = 0;
+
+int increasing() 
+{
+    defer num++;
+    catch {
+        defer write("leaving catch block\n");
+        write("do something\n");
+    }
+
+    write("leaving increasing, return value: ");
+    return num;
+}
+
+write(increasing(), "\n");
+write(increasing(), "\n");
+write("current num value: ", num);
+```
+
+最后的执行结果为：
+```
+do something
+leaving catch block
+leaving increasing, return value: 0
+do something
+leaving catch block
+leaving increasing, return value: 1
+current num value: 2
+```
+
+可以发现，`catch`代码块中的`defer`语句在离开`catch`后执行，而`increasing`函数下进行自加的`defer`语句则是在离开函数之后和其他语句之前执行，即`increasing`返回了自加之前的`num`，而后`num`的值实际上已经自加了1。也就是说，`defer`完成了“*在返回后进行操作*”的效果。
+
+理解了`defer`的用法之后，在使用过程中也要注意避免类似上述操作的代码，因为会降低代码的可读性，而`defer`关键字的本意是用来**执行手动资源管理**的。
+
+`defer` 语句中抛出异常时，异常将会向上抛出，不会打断其他`defer` 语句的执行，所有本应被执行的的 `defer` 语句都会被执行。
+
+## defer实现思路
+defer实现的大致思路是以lambda表达式的方式把后面的语句包在一个匿名函数中，然后在运行时push到调用栈上，在离开对应的代码块的时候执行对应的defer函数。 
+
+## 运用实例
+
+:::info example
+
+摘自项目代码
+
+```cpp
+public mixed send_request_directly(object conn, map args)
+{
+    queue q = queue.create("", 1);
+    defer q.close(); // 离开函数后关闭队列
+
+    ...
+
+    mixed result = q.receive(10);
+    return result;
+}
+```
+
+:::
+
+:::info example
+
+_PS_. 代码块中有多个`defer`时，按顺序执行
+
+```cpp
+private bool do_logout_in_co(object user, function callback)
+{
+    TRACE_INFO(HIY"LOGOUT: %s开始登出"NOR, user.desc());
+
+    // 结束时清除标记
+    assert(user.query_temp("logging_out"));
+    defer user.delete_temp("logging_out");
+
+    bool success = false;
+    string reason = "unknown";
+    defer {
+        if (is_function(callback))
+            callback.call(success);
+    };
+
+    // 请求登出，先锁定用户
+    string account_id = user.get_account_id();
+
+    ...
+
+    // 锁定
+    if (!UserD.lock_user(account_id))
+    {
+        TRACE_ERROR("%s登出时锁定失败", user.desc());
+        return false;
+    }
+
+    // 退出时解锁
+    defer UserD.unlock_user(account_id);
+
+    ...
+}
+```
+
+:::

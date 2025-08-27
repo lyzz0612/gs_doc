@@ -1,0 +1,810 @@
+---
+sidebar_label: '函数指针（function）'
+sidebar_position: 5
+---
+
+# 函数指针（function）
+
+function类型作为一个函数指针，类似于C++里面的（void*) func，它可以作为一个函数的对象，通过function进行传递。
+我们可以通过(: function_name, function_args... :)的形式可以定义一个函数指针
+并可以以(*ptr)(...)的形式进行调用。
+
+例如：
+```cpp
+function f = (: printf, "%s" :);    // 使用 '(:' 和 ':)' 来定义，带参数
+(*f)("abc");                        // 输出 "abc"
+function func = (: sizeof :)        // 使用 '(:' 和 ':)' 来定义，不带参数
+int size = func.call_local("hello world") // size = 11
+```
+当然我们可以定义自己的函数，举个例子：
+
+```cpp title="maxer.gs"
+//计算两个数值的最大值
+public int maxer(int x, int y)
+{
+    return x > y ? x : y;
+}
+
+void test()
+{
+    int x = 102;
+    int y = 32;
+    function fun = (: maxer :);
+    int ans = fun.call_local(x, y);
+    write(ans);
+}
+
+test();
+```
+
+上面函数执行完之后会输出x和y中的最大值，也就是102
+
+---
+
+## 函数指针的参数域(arg domain)
+顾名思义，函数指针的参数域是指函数指针拥有的参数变量所在的域；
+
+* 函数指针不带有参数变量时，参数域取决于函数原型是不是parallel
+    * 原型为parallel的，参数域为nil
+    * 原型为非parallel的，参数域为函数指针的owner(ob instance)所在的域
+        * 可以使用function.info().object查看函数指针的owner
+        ```cpp title="f1.gs"
+        //
+
+        void create()
+        {
+        }
+
+        public void say()
+        {
+        }
+
+        public parallel void yell()
+        {
+        }
+        ```
+
+        ```cpp title="test.gs"
+        #pragma parallel
+
+        import .f1;
+
+        void create()
+        {
+        }
+
+        public void test()
+        {
+            object ob = new_object(f1, domain.create());
+
+            // 对象的域
+            printf("ob domain: %O\n", ob.get_domain());
+
+            // 定义一个不带参数变量的函数指针: 函数原型为parallel
+            function f1 = (: ob.yell :);
+            printf("f1 arg domain: %O\n", f1.get_arg_domain());
+
+            // 定义一个不带参数变量的函数指针: 函数原型为非parallel
+            function f2 = (: ob.say :);
+
+            printf("f2 arg domain: %O\n", f2.get_arg_domain());
+            printf("f2 ob instance: %O\n", f2.info().object);
+            printf("f2 ob instance domain: %O\n", f2.info().object.get_domain());
+        }
+
+        ```
+
+        ```cpp
+        import test;
+        test.test();
+        ```
+        ```
+        输出结果在此:
+        ob domain: domain[13:v1]d3
+        f1 arg domain: nil
+        f2 arg domain: domain[13:v1]d3
+        f2 ob instance: object[34:v2]/f1.gs
+        f2 ob instance domain: domain[13:v1]d3
+        ```
+
+* 函数指针带有参数变量时，参数域取决于参数列表中的参数类型
+    * 参数列表中拥有非read only的buffer/array/map/function参数时，参数域就是该参数所在的域
+
+        ```cpp title="f1.gs"
+        //
+
+        void create()
+        {
+        }
+
+        public void say()
+        {
+        }
+
+        public parallel void yell(...)
+        {
+        }
+        ```
+
+        ```cpp title="test.gs"
+        // 
+        #pragma parallel
+
+        import .f1;
+
+        void create()
+        {
+        }
+
+        public void test()
+        {
+            object ob = new_object(f1, domain.create());
+
+            // 参数域中不带有非read only的buffer/array/map/function参数
+            int a1 = 1;
+            string a2 = "2";
+            map a3 = {};
+            array a4 = [];
+            printf("this domain: %O\n", this_domain());
+
+            // 带了buffer/array/map/function参数
+            // 参数域就是参数所在的域(也就是当前域 this_domain())
+            function f = (: ob.yell, a1, a2, a3, a4 :);
+            printf("f arg domain: %O\n", f.get_arg_domain());
+        }
+        ```
+
+        ```cpp
+        import test;
+        test.test();
+        ```
+        ```
+        this domain: domain[0:v1]zero
+        f arg domain: domain[0:v1]zero
+        ```
+
+    * 参数列表中不拥有非read only的buffer/array/map/function参数时，参数域和该函数指针不带有参数变量时是一样的
+
+        ```cpp title="f1.gs"
+        //
+
+        void create()
+        {
+        }
+
+        public void say()
+        {
+        }
+
+        public parallel void yell(...)
+        {
+        }
+        ```
+
+        ```cpp title="test.gs"
+
+        #pragma parallel
+
+        import .f1;
+
+        void create()
+        {
+        }
+
+        public void test()
+        {
+            object ob = new_object(f1, domain.create());
+
+            // 参数域中不带有非read only的buffer/array/map/function参数
+            int a1 = 1;
+            string a2 = "2";
+            map a3 = make_readonly({});
+            array a4 = make_readonly([]);
+
+            // 这里:通过类型转换获得的buffer是readonly的
+            buffer a5 = (buffer) "abc";
+
+            // 带了一堆非read only的buffer/array/map/function参数
+            // 参数域和不带参数相同
+            function f = (: ob.yell, a1, a2, a3, a4, a5 :);
+            printf("f arg domain: %O\n", f.get_arg_domain());
+
+            function nf = (: ob.yell :);
+            printf("nf arg domain: %O\n", nf.get_arg_domain());
+        }
+        ```
+
+        ```cpp
+        import test;
+        test.test();
+        ```
+
+        ```
+        输出在此:
+        f arg domain: nil
+        nf arg domain: nil
+        ```
+
+## 改变函数指针的参数域
+* 未绑定参数域的函数指针可以通过一些方法来绑定参数域
+    * function.bind_arg_domain: 直接将函数指针绑定到指定的参数域中
+
+        ```cpp title="test.gs"
+        #pragma parallel
+
+        void create()
+        {
+        }
+
+        public void test()
+        {
+            // 此时没有绑定参数域
+            function f = () {};
+            printf("f arg domain 1: %O\n", f.get_arg_domain());
+
+            // 绑定到指定的参数域上
+            domain d = domain.create();
+            f.bind_arg_domain(d);
+            printf("f arg domain 2: %O\n", f.get_arg_domain());
+        }
+        ```
+
+        ```cpp
+        import test;
+        test.test();
+        ```
+
+        ```
+        输出在此:
+        f arg domain 1: nil
+        f arg domain 2: domain[11:v1]d1
+        ```
+
+    * function.append_arg_arr/function.append_arg:通过增加函数指针的非read only的buffer/array/map/function参数绑定参数域
+
+        ```cpp title="test.gs"
+
+        #pragma parallel
+
+        void create()
+        {
+        }
+
+        public void test()
+        {
+            // 此时没有绑定参数域
+            function f = () {};
+            printf("f arg domain 1: %O\n", f.get_arg_domain());
+
+            // 为函数指针增加一个buffer/array/map/function类型参数绑定参数域
+            array a1 = [];
+            f.append_arg(a1);
+            printf("f arg domain 2: %O\n", f.get_arg_domain());
+
+            // 此时没有绑定参数域
+            function f2 = () {};
+            printf("f2 arg domain 1: %O\n", f2.get_arg_domain());
+
+            // 为函数指针增加一组buffer/array/map/function类型参数绑定参数域
+            array arr = [ {}, [] ];
+            f2.append_arg_arr(arr);
+            printf("f2 arg domain 2: %O\n", f2.get_arg_domain());
+        }
+        ```
+
+        ```cpp
+        import test;
+        test.test();
+        ```
+
+        ```
+        输出在此:
+        f arg domain 1: nil
+        f arg domain 2: domain[0:v1]zero
+        f2 arg domain 1: nil
+        f2 arg domain 2: domain[0:v1]zero
+        ```
+
+* 已经绑定参数域的函数指针无法改变参数域
+    * 特别的，不带有参数的已经绑定参数域的函数指针可以通过function.remove_ob_instance()移除函数指针的owner(ob instance)，从而解绑定参数域
+
+        ```cpp title="test.gs"
+
+        public void test()
+        {
+            // 此时已绑定参数域
+            function f = () {};
+            printf("f arg domain 1: %O\n", f.get_arg_domain());
+
+            // 通过function.remove_ob_instance()移除owner，从而解除绑定参数域
+            f.remove_ob_instance();
+            printf("f arg domain 2: %O\n", f.get_arg_domain());
+        }
+        ```
+
+        ```cpp
+        import test;
+        test.test();
+        ```
+
+        ```
+        输出在此:
+        f arg domain 1: domain[0:v1]zero
+        f arg domain 2: nil
+        ```
+
+## 函数指针的几种调用方式
+* call_local: 在当前域下调用函数指针
+    * 函数的参数域为nil或者参数域于当前域相同时，才能调用函数指针
+    * 函数的参数域非nil时并且和当前域不同时，调用会出错
+
+    ```cpp title="test.gs"
+
+    #pragma parallel
+
+    import .f1;
+
+    public void test()
+    {
+        function fn = (int i) {
+            printf("hello: %d\n", i);
+        };
+        // 参数域为nil，可以被调用
+        fn.call_local(1);
+
+        // 函数绑定参数域为当前域
+        fn.bind_arg_domain(this_domain());
+
+        // 调用域和函数的参数域一致,可以被调用
+        fn.call_local(2);
+
+        function fn2 = (int i) {
+            printf("hello: %d\n", i);
+        };
+
+        // 函数绑定参数域为非当前域
+        fn2.bind_arg_domain(domain.create());
+
+        // 调用域和函数的参数域不一致，调用报错
+        fn2.call_local(2);
+    }
+
+    ```
+
+    ```cpp
+    import test;
+    test.test();
+    ```
+
+    ```
+    输出在此:
+    hello: 1
+    hello: 2
+    Error(-1): Can not call function local since not in expected domain, current domain is 'domain[0:v1]zero' expected 'domain[18:v1]d8'
+    Coroutine: co[12:v1]shell
+    Domain: domain[0:v1]zero [local call]
+    At unknown:0 (call_local) in object[31:v2]
+    Argument f = N/A
+    Argument $2 = 2
+    Domain: domain[0:v1]zero [local call]
+    At /test.gs:33 (test) in object[31:v2]
+    Variable fn = (: .#closure_0_in_test :)object[31:v2]/test.gs<Parallel>
+    Variable fn2 = (: .#closure_1_in_test :)object[31:v2]/test.gs<Parallel>
+    Domain: domain[0:v1]zero [local call]
+    At /@shell_10.gs:8 (::entry) in object[34:v4]
+    Domain: domain[0:v1]zero [local call]
+    Domain: domain[0:v1]zero [local call]
+    Domain: domain[0:v1]zero [local call]
+    Domain: domain[0:v1]zero [local call]
+    At <Internal routine>
+    ```
+
+* call: 在函数指针的参数域中调用该函数指针
+    * 如果函数指针的参数域为nil，则在当前调用域中调用该函数指针
+    * 如果函数指针的参数域不为nil，则自动切域至函数指针的参数域后再调用该函数指针
+        * 如果函数指针的参数域和当前调用域相同时，不需要切域
+        * 如果函数指针的参数域和当前调用域不同时，则会自动切域
+
+    ```cpp title="f1.gs"
+    void create()
+    {
+    }
+
+    public void say()
+    {
+        printf("this domain@say: %M\n", this_domain());
+    }
+
+    public parallel void yell()
+    {
+        printf("this domain@yell: %M\n", this_domain());
+    }
+    ```
+
+    ```cpp title="test.gs"
+
+    #pragma parallel
+
+    import .f1;
+
+    public void test()
+    {
+        // 当前调用域
+        printf("this domain: %M\n", this_domain());
+
+        object ob = new_object(f1, domain.create());
+
+        printf("---1\n");
+
+        // fn的参数域不为空
+        function fn = (: ob.say :);
+
+        // 切域至fn的参数域后调用函数指针
+        fn.call();
+        printf("---2\n");
+
+        // fn2的参数域为空
+        function fn2 = (: ob.yell :);
+
+        // 直接在当前调用域里调用函数指针
+        fn2.call();
+    }
+    ```
+
+    ```cpp
+    import test;
+    test.test();
+    ```
+
+    ```
+    输出在此:
+    this domain: domain[0:v1]zero
+    ---1
+    this domain@say: domain[11:v1]d1
+    ---2
+    this domain@yell: domain[0:v1]zero
+    ```
+
+* call_by_instance: 为函数指针临时指定owner后再进行call调用
+    * 函数指针执行call_by_instance调用时，需要保证函数指针的参数域为nil或者和新owner的域相同，否则调用错误
+    * function.remove_ob_instance的作用是移除函数指针的owner
+    * 参数域不为nil的函数指针，不拥有非read only的buffer/array/map/function的参数时，可以通过function.remove_ob_instance移除owner从而设置参数域为nil
+
+    ```cpp title="f1.gs"
+
+    void create()
+    {
+    }
+
+    public void say(mixed v)
+    {
+    printf("this domain@say: %M\n", this_domain());
+    printf("this object@say: %M\n", this);
+    }
+
+    public parallel void yell(mixed v)
+    {
+    printf("this domain@yell: %M\n", this_domain());
+    printf("this domain@yell: %M\n", this);
+    }
+    ```
+
+    ```cpp title="test.gs"
+
+    #pragma parallel
+
+    import .f1;
+
+    public void test()
+    {
+        object ob = new_object(f1, domain.create());
+        defer ob.close();
+        object ob2 = new_object(f1, domain.create());
+        defer ob2.close();
+
+        // 有参数域，参数中没有非read only的buffer/array/map/function
+        function f1 = (: ob.say, 1 :);
+
+        // 有参数域，参数带有非read only的buffer/array/map/function
+        function f2 = (: ob.say :);
+        f2.append_dup_arg([]);
+
+        // 无参数域: 参数中没有非read only的buffer/array/map/function
+        function f3 = (: ob.yell, 1 :);
+
+        // 有参数域，参数带有非read only的buffer/array/map/function
+        function f4 = (: ob.yell :);
+        f4.append_dup_arg([]);
+
+        debug.enable_exception_log(ErrorCode.UNKNOWN_ERROR, false);
+        defer debug.enable_exception_log(ErrorCode.UNKNOWN_ERROR, true);
+
+        // f1参数域可以通过remove_ob_instance解除
+        printf("CALL f1:\n");
+        f1.remove_ob_instance();
+        f1.call_by_instance(ob2);
+
+        // f2参数域无法通过remove_ob_instance解除
+        printf("CALL f2:\n");
+        try {
+            f2.remove_ob_instance();
+            // 这个会报错
+            f2.call_by_instance(ob2);
+        }
+        catch {
+            printf("f2 error occur.\n");
+        };
+
+        // f3无参数域，不需要remove_ob_instance
+        printf("CALL f3:\n");
+        f3.call_by_instance(ob2);
+
+        // f4有参数域，无法通过remove_ob_instance解除参数域，调用报错
+        printf("CALL f4:\n");
+        try {
+            f4.remove_ob_instance();
+            f4.call_by_instance(ob2);
+        }
+        catch {
+            printf("f4 error occur\n");
+        };
+    }
+    ```
+
+    ```cpp
+    import test;
+    test.test();
+    ```
+
+    ```
+    输出在此:
+    CALL f1:
+    this domain@say: domain[29:v1]d19
+    this object@say: object[45:v2]/f1.gs
+    CALL f2:
+    Error(-1) ignored.
+    f2 error occur.
+    CALL f3:
+    this domain@yell: domain[0:v1]zero
+    this domain@yell: object[45:v2]/f1.gs
+    CALL f4:
+    Error(-1) ignored.
+    f4 error occur
+    ```
+
+## 闭包的一些说明(closure)
+* 闭包的概念和c++应该是一致的(等名词解释页补充吧)；简单理解就是一个匿名函数指针；
+    * 闭包和普通函数的最大的区别是: 闭包可以捕获闭包外的调用栈上的变量
+
+    ```cpp title="test.gs"
+    #pragma parallel
+    public void test()
+    {
+        int n = 1;
+
+        // 定义一个闭包
+        function fn = () {
+            // 捕获闭包外的的调用栈上的变量
+            printf("n=%d\n", n);
+        };
+
+        // 调用
+        fn.call();
+    }
+    ```
+
+    ```cpp
+    import test;
+    test.test();
+    ```
+
+    ```
+    输出在此:
+    n=1
+    ```
+
+* 捕获方式: 简单理解就是使用闭包外变量的方式
+    * 值捕获: 浅复制捕获的变量,在闭包内对引用捕获变量的修改将会影响调用栈的变量;
+        * 闭包未明确指明引用捕获的变量都是值捕获
+
+        ```cpp title="test.gs"
+
+        #pragma parallel
+
+        public void test()
+        {
+            int n = 1;
+            array a = [];
+            array b = [];
+
+            printf("n=%d\n", n);
+            printf("a=%M\n", a);
+            printf("b=%M\n", b);
+            printf("\n");
+            // 定义一个闭包
+            function fn = () {
+                // 闭包内的修改不会传递到栈上
+                n = 3;
+                a = [ 1, 2, 3 ];
+                b.push_back(9);
+
+                // 使用闭包外的的调用栈上的变量
+                printf("n=%d\n", n);
+                printf("a=%M\n", a);
+                printf("b=%M\n", b);
+            };
+            // 调用
+            fn.call();
+        printf("\n");
+            printf("n=%d\n", n);
+            printf("a=%M\n", a);
+            printf("b=%M\n", b);
+        }
+        ```
+
+        ```cpp
+        import test;
+        test.test();
+        ```
+
+        ```
+        输出在此:
+        n=1
+        a=[]
+        b=[]
+        
+        n=3
+        a=[1,2,3]
+        b=[9]
+        
+        n=1
+        a=[]
+        b=[9]
+        ```
+
+    * 引用捕获: 就是捕获的变量本身了，在闭包内对引用捕获变量的修改将会影响调用栈的变量;
+        * \[&\]: 引用捕获所有变量
+        * \[&var1,&var2,...&varN\]: 引用捕获特定的变量
+
+        ```cpp title="test.gs"
+        #pragma parallel
+
+        public void test()
+        {
+            int m = 1;
+            int n = 1;
+            array a = [];
+            array b = [];
+
+            printf("m=%d\n", m);
+            printf("n=%d\n", n);
+            printf("a=%M\n", a);
+            printf("b=%M\n", b);
+        printf("------------------\n");
+            // 定义一个闭包
+            function fn = [&b,&n]() {
+                // 引用捕获b和n
+                // m和a是值捕获
+                // 值捕获:闭包内的修改不会传递到栈上
+                m = 3;
+                a = [ 1, 2, 3 ];
+
+                // 引用捕获:闭包内的修改会传递到栈上
+                b = [ 4, 5, 6 ];
+                n = 3;
+
+                // 使用闭包外的的调用栈上的变量
+                printf("m=%d\n", m);
+                printf("n=%d\n", n);
+                printf("a=%M\n", a);
+                printf("b=%M\n", b);
+            };
+            // 调用
+            fn.call();
+        printf("------------------\n");
+            printf("m=%d\n", m);
+            printf("n=%d\n", n);
+            printf("a=%M\n", a);
+            printf("b=%M\n", b);
+        }
+        ```
+
+* 闭包的参数域
+    * 闭包没有引用捕获也没有值捕获buffer/array/map/function变量时，参数域的情形等同于没有参数变量的函数指针
+    * 闭包引用捕获任一类型变量时，闭包的参数域就是当前域
+    * 闭包值捕获了类型为buffer/array/map/function的变量时，闭包的参数域就是当前调用域
+
+    ```cpp title="test.gs"
+
+        public void test()
+        {
+            int n = 1;
+            array a = [];
+
+            domain d = domain.create();
+
+            printf("this domain: %M\n", this_domain());
+
+            // 引用捕获了任一变量，参数域为当前域
+            function f1 = [&n]() {
+            };
+            printf("f1 arg domain: %M\n", f1.get_arg_domain());
+
+            // 值捕获了buffer/array/map/function变量，参数域为当前域
+            function f2 = [] () {
+                a.push_back(1);
+            };
+            printf("f2 arg domain: %M\n", f2.get_arg_domain());
+
+            // 没有引用捕获也没有值捕获buffer/array/map/function变量，
+            // 声明为非paralell的闭包，参数域为到当前域
+            function f3 = () {
+                n = 3;
+            };
+            printf("f3 arg domain: %M\n", f3.get_arg_domain());
+
+            // 没有引用捕获也没有值捕获buffer/array/map/function变量，
+            // 声明为parallel的闭包，参数域为nil
+            function f4 = parallel () {
+                n = 4;
+            };
+            printf("f4 arg domain: %M\n", f4.get_arg_domain());
+        }
+    ```
+    ```cpp
+    import test;
+    test.test();
+    ```
+
+    ```
+    输出在此:
+    this domain: domain[0:v1]zero
+    f1 arg domain: domain[0:v1]zero
+    f2 arg domain: domain[0:v1]zero
+    f3 arg domain: domain[0:v1]zero
+    f4 arg domain: nil
+    ```
+
+* defer闭包和一般闭包的区别
+    * defer闭包是默认引用捕获所有变量
+
+    ```cpp title="test.gs"
+
+    #pragma parallel
+
+    public void test()
+    {
+        int n = 1;
+        array a = [1,2,3];
+        printf("n is %d\n", 1);
+        printf("a is %M\n", a);
+        printf("\n");
+        // defer闭包默认引用捕获所有变量
+        defer {
+            // n被修改
+            n = 2;
+
+            // a也被修改
+            a = [4,5,6];
+        }
+        defer {
+            // 输出最新值
+            printf("n is %d\n", n);
+            printf("a is %M\n", a);
+        }
+    }
+    ```
+
+    ```cpp
+    import test;
+    test.test();
+    ```
+
+    ```
+    输出在此:
+    n is 1
+    a is [1,2,3]
+
+    n is 2
+    a is [4,5,6]
+    ```

@@ -1,0 +1,510 @@
+---
+sidebar_label: '编译指南'
+sidebar_position: 2.2
+---
+
+# 编译指南
+
+## 概述
+* 本教程给出**MacOS**、**CentOS**、**Ubuntu**三个系统的编译指南
+* 其中**CentOS**下安装*gcc*和*cmake*比较麻烦，网上也没有比较可靠的教程，所以在下文中给出了参考的安装方式
+* 首先在每个系统给出**CICD**测试的系统版本、C & CXX 的编译版本、*cmake*版本、以及需要安装的依赖库
+* 然后在`构建与测试`中给出了构建和测试命令
+* 在末尾还提供了在**CentOS**、**Ubuntu**系统下使用`clang`编译gs的方法和注意事项
+* 系统镜像文件地址\\\\m68gfs\技术中心\wurq\系统镜像
+
+## 环境准备
+
+<Tabs groupId="platform-compile-env">
+<TabItem value="macos" label="MacOs">
+* **CICD**系统版本 : *MacOS High Sierra 10.13* 
+* C & CXX Compiler : *AppleClang 10.0.0.10001044*
+* 推荐使用homebrew安装需要的库或工具
+```bash
+ruby -e "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/master/install)"
+```
+* cmake --version >= 3.16
+```bash
+brew install --build-from-source cmake
+```
+
+* 以下是MacOS下需要安装的一些库
+  * `protobuf` 的构建 依赖 `autoconf` `automake` `libtool`
+
+      ```bash
+      brew install autoconf
+      brew install --build-from-source automake
+      brew intsall libtool
+      ```
+</TabItem>
+<TabItem value="centos" label="CentOS">
+* **CICD**系统 ：*CentOS 7.7*
+* C & CXX Compiler : *gcc 5.4 / gcc 5.5*
+* cmake --version >= 3.16
+
+:::danger 注意
+因为CentOS下安装gcc和cmake比较复杂 以及可能出现的问题下文会给出教程
+:::
+
+:::tip
+Centos需要修改网络配置文件，系统安装完成后`cd /etc/sysconfig/network-scripts` ，vi修改ipcf-e开头的文件，将**ONBOOT**内容改为"yes"后重启。
+:::
+
+* 以下是CentOS下需要安装的一些库
+  * `mongoc` 的构建依赖  `openssl`
+    
+     ```bash
+     yum install -y openssl-devel
+     yum install -y readline-devel
+     ```
+  * `protobuf` 的构建依赖 `autoconf` `automake` `libtool`
+  
+      ```bash
+      yum install -y autoconf
+      yum install -y automake
+      yum install -y libtool 
+      ```
+   * `yum install -y mesa-libGLU-devel`
+   * 可安装可视化界面，并通过startx命令启动。
+      ```bash
+      yum groupinstall "GNOME Desktop"
+      ```
+</TabItem>
+
+<TabItem value="rocky linux9" label="Rocky Linux 9.0">
+* **CICD**系统 ：*Rocky Linux 9.6 (Blue Onyx)*
+* C & CXX Compiler : *gcc 11.5.0*
+* cmake --version >= 3.16
+
+:::tip
+Rocky Linux 9的默认 gcc 版本为及cmake版本较高，一般情况下安装默认版本即可。
+:::
+
+* 以下是rocky linux9下需要安装的一些库
+  * `mongoc` 的构建依赖  `openssl`
+    
+     ```bash
+     dnf install openssl-devel
+     dnf install readline-devel
+     ```
+  * `protobuf` 的构建依赖 `autoconf` `automake` `libtool`
+  
+      ```bash
+      dnf install autoconf
+      dnf install automake
+      dnf install libtool
+      ```
+  * `gs` 的构建或运行依赖
+
+      ```bash
+      dnf install zlib-devel
+      dnf install gcc-c++ make cmake
+      dnf install cmake
+      ```
+</TabItem>
+
+<TabItem value="ubuntu" label="Ubuntu">
+* **CICD**系统 ：*Ubuntu 16.04.4*
+* C & CXX Compiler : *gcc 5.3 / gcc 5.4*
+* cmake --version >= 3.16
+
+:::tip
+**Ubuntu** 和 **CentOS**都是Linux，所以*cmake*的安装方式基本一致，下载链接可用同一个,详见CentOS在下文中给出的安装教程
+:::
+
+* 以下是**Ubuntu**下需要安装的一些库
+  * `mongoc` 的构建依赖  `openssl`
+    
+      ```bash
+      apt-get install openssl
+      apt-get install libssl-dev
+      ```
+  * `apt-get install -y libreadline-dev`
+  * `protobuf` 的构建依赖 `autoconf` `automake` `libtool`
+    
+      ```
+      apt-get install autoconf
+      apt-get install automake
+      apt-get install libtool
+      ```
+  * `apt-get install libglu1-mesa-dev`
+</TabItem>
+
+</Tabs>
+
+## 构建与测试
+
+### 手动调用cicd文件夹中的脚本进行构建与测试
+
+:::tip
+
+参见 [CICD流程中的说明](#cicd流程说明)
+
+:::
+
+例如，在Linux中：
+* 构建命令
+  ```bash
+  cd cicd
+  chmod +x ./build_cmake.sh
+  ./build_cmake.sh $1 $2
+  # $1 参数为 debug / release 
+  # $2 表示是否完整编译三方库
+  # 如: ./build_cmake.sh release 1
+  ```
+
+* 测试命令
+  ```bash
+  cd cicd
+  chmod +x ./install_pkgs.sh
+  ./install_pkgs.sh $1 
+  chmod +x ./test.sh
+  ./test.sh $1 $2
+  # $1 参数为 debug / release 
+  # $2 为运行参数 如 "/s 5 /D TEST_ROUND=1"
+  # ./test.sh release "/s 5 /D TEST_ROUND=1"
+  ```
+
+### 使用build文件夹中的脚本构建
+
+在gs工程的*build*文件夹下也有用于构建的脚本，不同于*cicd*中的是，`build_all.bat`和`build_all.sh`根据第二个传入的参数可以下载所有相关pkgs的源码进行编译并生成适用于当前操作系统、架构的动态库文件，保证测试用例可以正常通过验证。
+
+参数说明，以Linux为例：
+```bash
+cd build
+./build_all.sh $1 $2
+# $1 编译类型： debug/release等
+# $2 是否下载所有pkg源码并编译
+#    1. 下载并编译（原pkgs中的各pkg会替换为源码中src的软链接）
+#    2. 不下载，等效于上文中cicd的build_cmake+install_pkgs
+```
+
+使用`build_all`会编译所有pkgs源码，耗时较久，而若只想编译一个或几个特定pkgs的源码就不太方便，这种情况可以使用脚本`install_pkg_source.bat`和`install_pkg_source.sh`下载特定的pkg源码：
+```bash
+./install_pkg_source.sh $1 $2 $3
+# $1 具体pkg名称 或 all（所有pkgs）
+# $2 已编译好的driver的版本： debug/release
+# $3 是否执行pkg的build批处理
+```
+
+:::tip
+某些pkg需要准备编译环境
+:::
+
+:::warning
+必须先编译过gs生成相应的debug或release版的driver
+:::
+
+## 在Windows主机下交叉编译安卓平台库
+
+这里结束如何利用CMake在Windows环境下交叉编译Android平台的libgs库。
+
+可以参考[这里](https://docs.unrealengine.com/4.27/zh-CN/SharingAndReleasing/Mobile/Android/Setup/AndroidStudio/)安装Android Studio并设置NDK。Android Studio应该是包含了clang，这样就可以跨平台编译安卓库。
+
+> Android原生开发工具包（NDK）是一套工具，使你能够在Android应用中使用C和C++代码。
+
+以CMake的方式构建libgs安卓库。
+
+```bash
+cmake <project root>                                                    \ # 指定gs项目路径
+  -G "Unix Makefiles"                                                   \
+  -DCMAKE_TOOLCHAIN_FILE=%NDKROOT%/build/cmake/android.toolchain.cmake  \ # 指定android工具链
+  -DCMAKE_MAKE_PROGRAM=%NDKROOT%\prebuilt\windows-x86_64\bin\make.exe   \ # 指定make所在的路径
+  -DANDROID_ABI=arm64-v8a                                               \ # 指定安卓ABI（GS只支持64位平台）
+  -DANDROID_PLATFORM=android-23                                         \
+  -DCMAKE_BUILD_TYPE=Release                                            \
+  -DBUILD_STATIC_LINKED_DRIVER=ON                                         # 将plugins静态链接到libgs（看实际需要）
+
+# 执行make程序，编译指定目标
+%NDKROOT%\prebuilt\windows-x86_64\bin\make.exe libgs
+```
+
+## Centos下环境安装教程
+
+* **Centos7** 安装 *gcc5.5*
+  1. 官网下载 http://mirror.hust.edu.cn/gnu/gcc/gcc-5.5.0/gcc-5.5.0.tar.gz
+
+     ```bash
+     mkdir /opt/gcc
+     cd /opt/gcc
+     wget http://mirror.hust.edu.cn/gnu/gcc/gcc-5.5.0/gcc-5.5.0.tar.gz 
+     # wget http://ftp.gnu.org/gnu/gcc/gcc-5.5.0/gcc-5.5.0.tar.gz
+     tar
+     -zxf gcc-5.5.0.tar.gz
+     ```
+  2. 解压好后 进入解压好的文件
+     ```bash
+     cd gcc-5.5.0
+     ./contrib/download_prerequisites 
+     
+     # 其中download_prerequisites文件中GCC依赖库的地址不对，需要进行以下更改
+     # 将ftp://gcc.gnu.org/pub/gcc/infrastructure/ 全部替换为 http://gcc.gnu.org/pub/gcc/infrastructure/ (这里一共是四个需要修改的)
+     sed -i 's/ftp/http/g' ./contrib/download_prerequisites
+     
+     cd ..
+     ```
+
+  3. 建立编译后文件存放目录，生成*Makefile*文件
+     ```
+     mkdir gcc-build-5.5.0
+     cd gcc-build-5.5.0
+     ../gcc-5.5.0/configure --enable-checking=release --enable-languages=c,c++ --disable-multilib
+     ```
+     
+  4. 编译与安装
+     ```bash
+     # make前检查g++是否可用,若无g++，则 yum install gcc-c++
+     # make -j [number] 指定编译job number，job number 为 1 时会很慢
+     make
+     make install
+     ```
+  5. 查看新版本
+     ```bash
+     gcc --version
+     ```
+  6. 重新设置环境变量 软链接给root
+     ```bash
+     mkdir /usr/gcc485backup/
+     mv /usr/bin/{gcc,g++,c++} /usr/gcc485backup
+     sudo ln -s /usr/local/bin/gcc /usr/bin/gcc
+     sudo ln -s /usr/local/bin/g++ /usr/bin/g++
+     sudo ln -s /usr/local/bin/c++ /usr/bin/c++
+     ```
+  7. 查看root用户下的版本
+     ```bash
+     sudo gcc --version
+     # 如果cmake阶段依然显示gcc版本为4.8.5 需确保root用户是否是5.5.0
+     ```
+  
+* gcc安装后可能会遇到libstdc++这个库版本过低的问题
+
+:::info
+报错提示： */lib64/libstdc++.so.6: version `GLIBCXX_3.4.21' not found* 
+:::
+
+  1. 查看 GLBCXX版本
+     * `strings /usr/lib64/libstdc++.so.6 | grep GLIBCXX`
+     * 会发现确实没有我们需要的3.4.21
+  2. 查看libstdc++.so.6链接的库
+     * `ll /usr/lib64/libstdc++.so.6`
+     * 查看系统更高版本的lib库
+         * `find / -name libstdc++.so.6*`
+     * 查看lib库信息
+         * `strings /usr/local/lib64/libstdc++.so.6.0.21 | grep GLIBCXX`
+     * 发现里面包含3.4.21
+  3. 重新链接
+     
+     ```bash
+     cp /usr/local/lib64/libstdc++.so.6.0.21 /usr/lib64/libstdc++.so.6.0.21
+     rm -f /usr/lib64/libstdc++.so.6
+     ln -s /usr/lib64/libstdc++.so.6.0.21 /usr/lib64/libstdc++.so.6
+     ```
+
+* 安装指定版本的*cmake*
+  
+:::warning
+**CentOS**下直接用yum安装的话 版本会很低
+:::
+
+  1. 可以从 https://cmake.org/files/ 下载需要的版本 (例如测试机器上下载3.17)
+     
+      ```bash
+      mkdir /opt/cmake
+      wget https://cmake.org/files/v3.17/cmake-3.17.2-Linux-x86_64.tar.gz
+      tar -zxf cmake-3.17.2-Linux-x86_64.tar.gz
+     ```
+  2. 解压即安装 解压到/usr/local/cmake目录下
+
+     ```bash
+     mkdir /usr/local/cmake
+     mv ./cmake-3.17.2-Linux-x86_64 /usr/local/cmake
+     ```
+  3. 软链接给root用户即可
+     ```bash
+     sudo ln -s /usr/local/cmake/cmake-3.17.2-Linux-x86_64/bin/c* /usr/bin/
+     ```
+  4. 确认是否安装成功
+     * `cmake --version` 查看版本是否和安装版本一致
+
+## Clang安装配置教程
+---
+* **CentOS**或者**Ubuntu**下如果需要使用clang而非GCC，可以参考如下步骤：
+  * 本例中使用的clang版本是10.0.1，clang编译花费的时间会比较长。
+  * 没有尝试过直接使用yum或者apt安装的clang。
+  
+1. clang依赖
+    * CMake >= 3.13.4
+    * GCC >= 5.1.0
+    * python >= 3.6
+    * zlib >= 1.2.3.4
+    * GNU Make 3.79, 3.79.1
+    * 关于GNU Make 我使用的版本是3.82 亦能够正常使用
+2. 下载LLVM项目
+       * git clone https://github.com/llvm/llvm-project.git
+       * 由于项目很大，这一步也需要花费一段时间
+
+  1. 切换分支到10.x
+       * cd llvm-project
+       * git checkout remotes/origin/release/10.x
+
+  2. 接着就可以开始编译了
+       * mkdir build
+       * cd build
+       * cmake -DCMAKE_BUILD_TYPE=Release  -DLLVM_ENABLE_PROJECTS=clang -G "Unix Makefiles" ../llvm
+       * make
+       * make install
+       * 关于cmake命令，LLVM项目中的README.md中已经解释了命令行选项的用途。
+       * 关于make，如果是在虚拟机上进行make，根据相关的文章资料，建议分配足够的swap空间；实际测试在编译过程中有发生2G内存全部占满的情况，为了避免编译中途失败，要做好准备。
+       * 整个编译过程大约耗时2-4个小时
+
+  3. clang安装完成之后的检查
+       * 由于clang使用gcc的头文件和库文件，因此需要检查clang是否引用了错误的gcc路径
+       * 输入clang -v 看看 “Selected GCC installation” 项目是否使用了过旧的gcc库。如果使用了旧库，下面有解决方案
+
+  4. 编译GS
+       * 参见 构建与测试 部分，需要变动的是：在调用build_cmake.sh时，使用额外的命令行参数：
+         ```
+         ./build_cmake.sh release 1 compiler clang
+         ```
+
+  5. 编译GS时可能发生的缺库/未声明的函数问题
+      * 使用clang编译gs，进行到大约5%时，有可能会给出如下的编译错误：
+            ```
+            fatal error: 'codecvt' file not found
+            ```
+       * 如果发生这一问题，说明clang引用了过旧的gcc头文件，一般来说这一问题可能是编译gcc5.5.0时出现了一些问题，导致clang没能找到gcc-5.5.0的相关文件。
+           * 一个可行的临时解决方案是：
+               * 随便编写一个cpp文件，然后使用 clang -v xxx.cpp，命令行选项-v可以帮助观察clang的include目录位置
+                  ```bash
+                   \#include <...> search start here:*
+                   /usr/lib/gcc/x86_64-redhat-linux/4.8.5/../../../../include/c++/4.8.5*
+                   /usr/lib/gcc/...*
+                  ```
+                  可以看到的clang引用了几个（一般是三个）gcc的包含目录
+               * 类似地，使用gcc -v xxx.cpp 也能看到几个结构类似的包含目录，所谓结构类似是指：
+                  ```bash
+                  ...../5.5.0/../../../../include/c++/5.5.0*
+                  ...../5.5.0/../../../../include/c++/5.5.0/x86_64-\<操作系统发行版\>-linux-gnu*
+                  ...../5.5.0/../../../../include/c++/5.5.0/backward*
+                  ```
+               * 将clang引用的include目录做好备份，将gcc-5.5.0引用的include目录拷贝一份替换掉clang引用的。
+               * 千万注意，不能使用类似export CPLUS_INCLUDE_PATH=... 的方法去替换clang的搜索位置，否则会导致clang报告以下错误：
+                  ```
+                  error: use of undeclared_identifier '__builtin_ia32_addss'...*
+                  ```
+               * 这是由于clang和gcc在一部分内建函数的实现方式不同导致的，正常情况下clang在使用到emmintrin.h这个头文件时，会到自己的目录下寻找；
+                 * 但是如果使用替换环境变量的方法改变include搜寻目录，clang就会使用gcc的emmintrin.h，从而导致clang发生缺失内建函数而报错。
+
+      * 编译进行到约27%时，连接器可能会报 std::__cxx11:basic_string::_M_Build 未定义的引用 这样的错误，这是因为clang引用了旧的libstdc++等库导致的，与替换include目录的方法类似：
+          * *clang -v*    可以查看clang使用的库目录（*Selected GCC installation： xxxx*）
+          * 找到gcc使用的库目录，拷贝，替换掉clang使用的那份。
+      * 简单地说，以上问题都是由clang引用了错误的gcc导致的，理论上gcc配置正确就不会出现以上问题。
+
+
+## CICD流程说明
+
+**CI**：持续集成（Continuous Integration）
+* 它属于自动化构建/测试流程，每次提交代码时都会自动进行一系列构建/测试，全部执行成功才会允许合并代码到主分支上。
+
+**CD**：持续部署（Continuous Deployment）
+* 它属于自动化部署流程，一般在CI完成的基础上，将生成产物推送到目标环境上。
+* 如果该部分需要手动触发，则是持续交付（Continuous Delivery）流程。
+
+### gitlab-runner
+
+CICD的执行程序，负责监听Gitlab的请求并用来执行相应的命令。
+
+需要预先在虚拟机/物理机上，向Gitlab上的指定项目进行认证注册。
+
+> 注册runner流程见[wiki快速入门](https://wiki.g-bits.com/pages/viewpage.action?pageId=583966290)
+
+### gitlab-ci.yml
+
+`.gitlab-ci.yml`文件是指导runner如何工作的配置脚本，由**Gitlab-CI**负责解析，在该文件中，你可以定义：
+* 你想运行的脚本 
+* 你想要包含的其他配置文件和模板 
+* 依赖项和缓存 
+* 你想要执行的命令（顺序或并行） 
+* 部署应用程序
+* 自动运行脚本或手动触发特点的脚本
+
+流程中要运行的脚本包含于**jobs**中，而**jobs**则在**pipeline**中运行，你可以使用`gitlab-ci.yml`文件将多个独立的jobs分组为按定义顺序运行的**stages**
+
+:::danger 注意
+CICD的配置文件中至少需要一个非隐藏的job；其中的命令应注意符合runner所在计算机平台的CLI命令。
+:::
+
+官网`.gitlab-ci.yml`示例：
+```yml
+stages:
+  - build
+  - test
+
+build-code-job:
+  stage: build
+  script:
+    - echo "Check the ruby version, then build some Ruby project files:"
+    - ruby -v
+    - rake
+
+test-code-job1:
+  stage: test
+  script:
+    - echo "If the files are built successfully, test some files with one command:"
+    - rake test1
+
+test-code-job2:
+  stage: test
+  script:
+    - echo "If the files are built successfully, test other files with a different command:"
+    - rake test2
+```
+
+:::info
+详见[官方文档](https://docs.gitlab.com/ee/ci/yaml/gitlab_ci_yaml.html)
+:::
+
+#### 编译
+
+如上文所诉，GS的编译分三个平台，各个平台所需的环境也已经搭建完成，在各个平台分别注册runner后便可以使用yml定制CICD流程了，流程一般分为3个阶段（即**stages**）：编译、测试和部署。
+
+编译阶段主要是调用cmake编译的批处理脚本：
+```bash
+# Linux/MacOS
+chmod +x ./build_cmake.sh # 先增加执行权限
+source ./build_cmake.sh release 0 # 参数1为编译版本，一般为release或debug 参数2为是否编译第三方库（由于大部分第三方库都移到pkg中，这里只编译asmjit）
+
+# Windows
+call build_cmake.bat release 0
+```
+
+有上文可知，在*cicd*文件夹下的`build_cmake.bat`和`build_cmake.sh`分别是windows和Linux/Mac平台的cmake编译脚本。所以，在本地也可以手动调用脚本进行编译。
+
+#### 测试
+
+进行测试之前需要先下载测试用例依赖的的pkgs：
+```bash
+# Linux/MacOS
+chmod +x ./install_pkgs.sh
+source ./install_pkgs.sh release # release与编译阶段的编译版本对应，即改脚本会使用相应的输出目录中的driver下载pkgs
+
+# Windows
+call install_pkgs.bat release
+
+```
+
+测试：
+```bash
+# Linux/MacOS
+chmod +x ./test.sh
+./test.sh debug "/s 5 /D TEST_ROUND=1" # 参数2为运行参数
+
+# Windows
+test debug "/s 5 /D TEST_ROUND=1"
+```
+
+#### 部署
+
+:::note
+_TODO_
+:::

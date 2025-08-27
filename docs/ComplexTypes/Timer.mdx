@@ -1,0 +1,104 @@
+---
+sidebar_label: '计时器'
+sidebar_position: 11
+---
+
+# timer
+
+timer是计时器的意思，顾名思义，它的存在其实就是计时，比如程序要隔一段时间执行某个操作，
+这时候就可以运用计时器来计时，每次到达这个时间点就执行程序的操作。
+
+---
+
+举个例子：
+
+```cpp title="timer.gs"
+timer t1 = timer.create(2, 0, (: printf, "world\n" :));     // 初始化id (t1)，2秒后执行
+timer.create(1, "name", (: printf, "hello " :));            // 初始化name ("name")，1秒后执行
+
+coroutine.sleep(3);                   // 休眠3秒
+timer.delete(t1);           // 根据id删除timer
+timer.delete("name");       // 根据name删除timer
+```
+
+底层计时器处理过程是这样的：
+
+* create接口创建一个计时器时，会创建一个timer类型的handler，挂到静态对象_timer_scheduler上;
+* _timer_update_thread去更新所有运行状态的计时器超时信息，发现超时时立即执行超时回调。
+_timer_update_thread协程具有NO_PEND属性，不能延迟执行。
+
+如果超时回调是要删除某个协程，而某个协程处于PENDING状态（例如sleep中），那么_timer_update_thread将无法立即执行删除该协程的操作，从而报错。
+为了支持回调函数可能要延迟执行，或回调函数中有延迟操作的场景，引入了挂起计时器，使用接口create_pendable创建。
+
+举个例子：
+
+```cpp title="pendable_timer.gs"
+void do_wait()
+{
+    coroutine.sleep(1000);
+}
+
+void test1()
+{
+    for (int i = 1 upto 100)
+        timer.create_pendable(0, 0, (: do_wait :));
+    
+}
+
+coroutine.create("test1", "test1");
+
+void test2()
+{
+    for (int i = 1 upto 100)
+        timer.create_pendable(0, 0, (: coroutine.delete, this_coroutine() :));
+    coroutine.sleep(1000);
+}
+coroutine.create("test2", "test2");
+```
+
+---
+
+## timer常用的外部函数
+
+下面列出timer类型一些常用的外部函数以及用法。
+
+export const timer_apis = [
+            {
+                "id": 1,
+                "proto": "timer timer.create(real/int interval, mixed name, function timer_callback, ...)",
+                "desc": "初始化计时器",
+                "usage": "timer t = timer.create(2, 0, (: printf, \"world\\n\" :));"
+            },
+            {
+                "id": 2,
+                "proto": "timer timer.create_pendable(real/int interval, mixed name, function timer_callback, ...)",
+                "desc": "初始化挂起计时器",
+                "usage": "timer t = timer.create_pendable(2, 0, (: printf, \"world\\n\" :));"
+            },
+            {
+                "id": 3,
+                "proto": "mixed timer_instance.name()",
+                "desc": "计时器名",
+                "usage": "timer t = timer.create(1, \"name\", (: printf, \"hello \" :)); // t.name() = \"name\""
+            },
+            {
+                "id": 4,
+                "proto": "mixed timer.find(mixed name_or_id)",
+                "desc": "查找计时器",
+                "usage": "timer t = timer.create(1, \"name\", (: printf, \"hello \" :)); mixed m = timer.find(t); // m为查找结果信息"
+            },
+            {
+                "id": 5,
+                "proto": "void timer.delete(string name / handle id)",
+                "desc": "删除计时器",
+                "usage": "timer t = timer.create(1, \"name\", (: printf, \"hello \" :)); timer.delete(t1); // 根据id删除timer"
+            },
+            {
+                "id": 6,
+                "proto": "void timer.get_all()",
+                "desc": "获取所有计时器",
+                "usage": "array all_timers = timer.get_all(); // 返回包含所有timer的数组"
+            }
+        ];
+
+<ExternalApiTable list={timer_apis} />

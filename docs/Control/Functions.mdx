@@ -1,0 +1,397 @@
+---
+sidebar_label: '函数'
+sidebar_position: 2
+---
+
+# 函数
+* 介绍函数的分类及调用。
+* 介绍gs中函数式的用法。
+
+:::note
+_TODO_ : 介绍一下override
+:::
+
+## 函数调用
+
+函数(Function)实际上就是一种方法，每个函数都有其特定的功能，而Function就是实现这个功能的方法。  
+
+### 外部函数和内部函数
+GS中的函数主要分成两种：外部函数和内部函数,它们的区别是;
+
+- 最主要区别是外部函数是GS底层实现的函数，而内部函数则是使用GS来实现的函数；    
+- 内部函数可以依赖于外部函数取实现，外部函数可以实现一些内部函数无法实现的功能，比如printf()等；  
+- 外部函数的作用域是整个源程序，而内部函数只能在它的域中使用或者跨域调用。
+
+### 普通函数
+GS的普通函数定义基本语法为：
+```cpp
+prefix return_type function_name ( argument_list )
+{
+    // body_of_general_function
+}
+```
+普通函数语法定义解释：
+* prefix表示类型前缀，它是可选的，默认为private，其类型有以下五种：
+  * public(公有)  
+  * protected(保护)
+  * private(私有) -> 默认  
+  * virtual(虚拟)  
+  * override(覆盖)    
+
+* return_type表示返回值类型，也就是这个函数执行完之后需要返回值的类型
+  * return_type的类型是mixed，所有已有数据类型或者自定义数据类型都可以作为return_type
+  * return_type是每个函数必须要有的，不可省略
+  * 如果函数没有返回值，可以标注为 `void`
+
+* function_name是函数的名字
+  * 它也是不可省略的  
+  * 不能跟系统函数取同一个名字，以免造成冲突  
+
+* argument_list表示函数的参数 
+  * 函数的参数可以是零个或多个  
+  * 参数表中参数的格式为value_type value，其中参数之间用逗号隔开  
+  * 使用 `...` 可以接受变长参数
+
+* body_of_general_function是函数体
+  * 函数体是实现函数的最主要模块  
+  * 如果函数有返回值则需要在每个函数可能运行结束的最后return一个return_type类型的值  
+
+举个函数定义的例子：
+```cpp
+public int max_int(int x, int y) // 计算x和y中的最大值，函数定义为公有函数
+{
+    if(x > y)
+        return x;
+    return y;
+}
+```
+
+#### 受限定的函数参数
+
+函数参数可以使用修饰符进行限制，目前支持的修饰符包括：
+
+| 受支持的修饰符 | 目的 | 限制 |
+|----------------|------|------|
+| `readonly`     | 限定参数只能是 readonly 的实例 | 不能用于 int, float, handle 等不能为 readonly 的类型，也不能修饰 mixed 类型；函数内不能对被修饰为 readonly 的参数进行赋值操作 |
+| `parallel`     | 限定参数只能是 parallel 的实例 | 不能用于 int, float, handle 等不能为 parallel 的类型，也不能修饰 mixed 类型；函数内不能对被修饰为 parallel 的参数进行赋值操作 |
+
+当参数被使用 `readonly` 或 `parallel` 修饰后，如果传入的实参并未按预期地生效，则抛出异常：
+
+```js
+void foo(readonly map m)
+{
+    // ...
+}
+foo({});                // 运行时异常，传入的参数并不是 readonly 的
+foo(make_parallel({})); // 运行时异常，readonly 的参数只接受 readonly, 反之也一样
+foo(make_readonly({})); // Ok
+```
+
+### 匿名函数
+GS中有一种函数叫做匿名函数，它存在的意义在于有时候我们需要在定义一个全局变量，但是GS语言没有static方法，
+通过匿名函数，可以将匿名函数使用的变量存储在堆里面，以此可以实现全局变量的声明运用。
+
+GS的匿名函数定义基本语法为：
+```js
+function [ capture ]( argument_list )
+{
+    // body_of_delegate_function
+};
+```
+匿名函数语法定义解释：
+
+* capture表示捕获的外部变量
+  * 决定了使用外部变量时按值捕获还是按引用捕获: 
+    * `[&]` 用到的任何外部变量都按引用捕获
+    * `[&x]` 变量x按引用捕获，其他变量按值捕获，可以指示多个引用捕获项
+  * 如果不需要指示引用捕获，可以省略 `[]`
+
+* argument_list表示函数的形参列表，规则和普通函数的形参列表一致
+  * 与C++不同的是，GS不允许省略空的形参列表：`()`
+
+* body_of_delegate_function是函数体
+  * 函数体是实现函数的最主要模块  
+  * 如果函数有返回值则需要在每个函数可能运行结束的最后return一个值  
+
+举个例子：
+```cpp
+function test()
+{
+    int i = 0;
+    i++;
+    printf("in  i = %d\n", i);              // 输出 in  i = 1
+    function fun = [&]()                    // 定义匿名函数，返回i
+    {
+        i++;
+        return i;
+        // printf("i = %d\n", i);
+    };
+    return fun;
+}
+function fun = test();                  
+printf("out i = %d\n", fun.call_local());   // 输出 out i = 2
+printf("out i = %d\n", fun.call_local());   // 输出 out i = 3
+```
+
+### 多种返回值类型函数
+GS函数提供多种返回值类型，比如：
+```cpp
+array arr = [1, 2, nil, "Three", 2];        // 初始化array
+mixed get_item(int index)                   // 使用mixed作为返回值类型
+{
+    return arr[index];
+}
+
+mixed val = get_item(1);                // val = 2
+val = get_item(2);                      // val = nil
+val = get_item(3);                      // val = "Three"
+```
+
+### 变长参数列表
+GS函数提供变长参数列表，在函数参数列表中使用三点（...）表示函数有可变的参数。
+
+```cpp
+public array ping_args(...)
+{
+    if($?)  // 如果有参数
+    {
+        if(lengthof($<) == 1) // 如果只有一个参数
+            return [$1];    // 返回第一个参数
+        return ($<)[0..<1]; // 否则返回所有参数
+    }
+    else    // 没有参数
+        return ["no argument"];
+}
+```
+
+`$` 相关参数介绍：
+
+* `$<` 表示所有参数列表   
+* `$?` 表示是否有参数  
+* `$num` 表示第 `num` 个参数，如 `$1` 表示第一个参数
+* `($<)[begin_num..<end_num]` 从第begin_num个参数（第一个为0）开始到倒数第end_num个（包括）。比如`($<)[0..<1]`表示所有参数。
+
+### 函数调用类型
+
+GS的函数调用类型主要分成以下几类。
+
+#### 直接函数调用
+直接函数调用有两种情况，一种是外部函数调用，另外一种则是同一个文件内定义的或者#include进来的函数。比如：
+```cpp
+// 系统函数调用
+lengthof("Hello world");   
+get_system_info();
+
+// 同一文件函数调用，(其实"#include xxx"是把xxx文件代替"#include xxx"这条语句，  
+// 实际上也算是同一文件内的函数。
+int max(int x, int y)
+{
+    return x > y ? x : y;
+}
+int x = 1, y = 2;
+int ans = max(x, y);
+```
+
+#### .型函数调用
+.型函数调用主要用途是调用外部函数或者调用某个本域内的object的函数，比如：
+```cpp
+// 调用外部函数
+float val = math.abs(-3.14);    // 使用math中的abs()函数，求绝对值
+
+
+// 调用本域的object函数
+// obj.gs
+public void print_hello_world()
+{
+   write("hello world");
+}
+
+// test.gs
+object obj = load_static("obj.gs", this_domain());
+obj.print_hello_world();
+```
+
+#### .?型函数调用
+用法类似于.型函数调用，后面加个'?'表示这个调用可能是空的调用。  
+如果有调用的话，它就相当于.型调用，否则它啥事也不干，也不会报错，相当于没有这条语句。
+该调用设计的主要目的是为了满足使用者在不清楚一个函数存不存在的时候减少判断，方便书写。
+
+举个例子：
+```cpp
+// obj.gs
+public void print_hello_world()
+{
+   write("hello world");
+}
+
+// test.gs
+object obj = load_static("obj.gs", this_domain());
+obj.print_hello_world();        // 相当于.型调用
+obj.?if_exist_function();       // 不调用也不报错，相当于没有这条语句
+```
+
+与该调用方式类似的是?.型调用和?.?型调用。
+?.调用： 如果调用的object不存在，不会报错，相当于没有该语句。如果存在的话相当于.调用。
+?.?调用：如果调用的object不存在或者是空的调用，不会报错，相当于没有该语句。否则相当于.调用。
+
+#### =>型函数调用
+=>型函数调用表示跨域调用。  
+当当前对象不在当前域的时候，调用对象函数的时候需要使用跨域调用。
+当当前对象在当前域的时候，使用跨域调用相当于.型函数调用。
+
+举个例子：
+```cpp
+// xxx.gs
+int i = 0;
+
+public void test()
+{
+    i = i + 1;
+}
+
+// test.gs
+handle dom = domain.create("xxx");          // 新建一个域
+object obj = load_static("/xxx.gs", dom);   // 将obj绑定到新建的域xxx
+obj=>test();                                // 此时必须使用跨域调用
+```
+
+跨域调用时，即便目标域与当前域一致，依然会导致传入参数和目标函数返回值的复制。
+
+#### =>？型函数调用
+用法类似于=>型函数调用，用途类似于.?型函数调用，后面加个'?'表示这个调用可能是空的调用。
+
+### @型函数调用
+
+@型函数调用是实际是一个我们不着急执行的函数调用。  
+比如说我们要加载一个文件，但我又不着急使用这个文件，那我就使用@=>型函数调用，它会先把这个调用放入一个协程队列中，
+等待协程调用执行，此时我们是不知道它什么时候执行完毕的。
+
+举个例子：
+```cpp
+// xxx.gs
+
+public void print_hello()
+{
+    write("hello ");
+}
+
+public void print_world()
+{
+    write("world");
+}
+
+// test.gs
+handle dom = domain.create("xxx");          // 新建一个域
+object obj = load_static("/xxx.gs", dom);    // 将obj绑定到新建的域xxx
+@obj=>print_world();                         // print_world()放入协程队列,就跳到下一句执行
+obj=>print_hello();                          // 直接执行print_hello()
+```
+最后得到的结果可能是 "hello world"
+
+
+## GS对函数式的支持
+
+### 高阶函数
+一般来说，一个函数可以接受另一个函数作为参数，这种函数就称为高阶函数。
+
+我们经常用到的一些数组方法，map、reduce、filter都属于高阶函数的范畴，灵活运用这函数式编程的三板斧可以少写很多代码。  
+
+这些函数除了传入数组本身以外，还传入一个函数指针用于对数组中每个元素进行处理。
+
+#### map
+举个例子，比如我们有个函数f(x) = x ^ 2， 现在想把这个函数作用到数组[1, 2, 3]上，就可以用map()来实现
+```cpp
+    array arr = [1, 2, 3];
+    array arr_new = arr.map((int x){
+        return x * x;
+    });
+    write("arr_new = ", arr_new, "\n");
+```
+可以看到结果是[1, 4, 9]。
+
+这里你可能会想，不需要map()函数，写一个循环也可以计算出结果，但是那样并不能一眼明白“把f(x)作用在array的每一个元素上并将结果生成一个新的array”。
+
+高阶函数实际上将运算规则抽象了，以便于我们清晰地表达复杂的函数。
+
+#### reduce
+再看看reduce的用法，reduce提供了reduce_left和reduce_right两种方法。 
+
+以reduce_left为例，reduce_left传入的函数必须接受两个参数，reduce_left会将本次计算的结果和array的下一个元素再作为函数的两个参数。对一个数组arr来说
+
+> array arr = [x1, x2, x3]
+
+reduce_left的效果就是
+
+> arr.reduce_left(func) = func(func(x1, x2), x3)
+
+而reduce_right的效果则是
+
+> arr.reduce_right(func) = func(x1, func(x2, x3))
+
+举一个最简单的求和的例子
+```cpp
+    array arr = [1, 2, 3];
+    int ans = arr.reduce_left((int x, int y){
+        return x + y;
+    });
+    write("ans = ", ans, "\n");
+```
+#### filter
+
+filter就是顾名思义的过滤器了，它传入的函数与map()一样也是依次作用于数组中的每一个元素的，根据返回值是ture或者false来决定保留还是丢弃该元素。
+
+举个例子，比如我想过滤得到数组中所有奇数
+```cpp
+    array arr = [1, 2, 3];
+    array arr_new = arr.filter((int x){
+        return x % 2;
+    });
+    write("arr_new = ", arr_new, "\n");
+```
+
+#### bind_arg_domain
+
+获取一个函数后可以绑定指定的域进行操作，如果不确定该函数在哪个域调用，或者需要将该函数切到指定的域下运行都可以使用该方法
+
+例：
+```cpp
+    // fn 在当前objetc的域执行
+    function fn = ( : _main :);
+    fn.bind_arg_domain(this.get_domain());
+    fn.call(this, unpack(1));
+
+```
+
+#### call 和 call_local
+
+call_local是在当前域上运行该函数，而call可以自动切到该函数本来所处对象的域来运行
+
+例：
+```cpp
+    // fn 在当前域执行 如果是RW对象需要跨域，或者使用bind_arg_domain切域
+    function fn = ob.get_function("test");
+    fn.call_local(ob, unpack(1));
+
+    // fn 在ob这个对象的域执行
+    function fn = ob.get_function("test");
+    fn.call(ob, unpack(1));
+
+```
+
+#### unpack
+
+可以将一个数组拆包成不同的参数，也可以将一个函数的参数列表中的参数拆包成不同的参数
+
+例：
+```cpp
+    // func1的参数a1进行拆包
+    public void func1(array a1, array a2)
+    {
+        write(unpack(0)); // 如同 write(a1, a2)
+        write(unpack(a1)); // 如同 write(a1[0], a[1], ..., a[a.length() - 1])
+    }
+
+    // 将数组a2进行拆包
+    array a2 = [0, 1, 2];
+    write(unpack(a2)); // 如同 write(0, 1, 2)
+```

@@ -1,0 +1,453 @@
+---
+sidebar_label: '域（domain）'
+sidebar_position: 2
+---
+
+# 域（domain）
+
+## 介绍域的概念及使用
+
+* GS中的域(domain)扩展自handle，其中handle有一个Lock和Unlock的机制，而域主要应用了handle里面这个锁的机制。
+* domain类似于一个保护壳，每个对象都需要放在一个特定的保护壳里面保护起来。
+* 域的出现主要是起到了一个保护对象数据安全的作用，它相当于一个内部实现的互斥锁。
+* 如果一个对象不是只读对象，一旦有一个协程调用到这个对象，它就会给对象加锁，这时候其它协程就不能去调用这个对象， 直到这个协程执行完毕，再给对象解锁，此时其它协程才可以调用这个对象。
+* 可以通过try_lock锁定当前域，在try_lock块中，这个域不能切出，一旦切出就会报错
+
+## 用法示例
+```cpp title="example.gs"
+
+int i = 0;
+
+public void test1()
+{
+    i = i + 1;
+    printf("i = %d\n", i);
+}
+
+public void test2()
+{
+    i = i - 1;
+    printf("i = %d\n", i);
+}
+```
+
+```cpp title="test.gs"
+import .example;
+
+handle dom = domain.create("example_domain");
+object obj = load_static(example, dom);
+
+// 在dom上执行invoke_func_in_dom
+coroutine.create_with_domain("example_co", dom, (: invoke_func_in_dom, obj :));
+parallel void invoke_func_in_dom(object ob)
+{
+    ob.test1();             // 调用此处时，当前域和对象所在的域一致，因此不需要跨域调用
+}
+
+obj=>test2();               // 跨域调用时一定要用跨域（=>）调用，使用（.）调用会出错
+```
+
+:::info
+当一个协程调用obj的方法时，会尝试进入obj所在的域，而一个域只能有一个协程运行，另外一个协程就无法执行obj的方法了。因此在这个例子中，ob.test1/ob.test2不会同时执行。
+:::
+:::warning
+如果没有domain对object进行保护，两个协程有可能同时取出i的值（此时为0），然后分别计算+1或-1之后再写入，最终结果就可能变成1或者-1甚至是其他值（可以参考其他语言的线程安全问题/原子操作等）。
+:::
+
+### 访问一个对象的方法时，是使用.号调用还是=>号调用
+
+* 访问一个对象(下面用ob代替)的方法是不是需要跨域调用(也就是=>调用)，取决于几个因素:
+
+    * 设计目的;
+
+    * 调用栈的当前域(简称当前域): this_domain();
+
+    * 被调用对象所属的域(简称对象域): ob.get_domain();
+
+    * 被调用对象的方法是不是一个并行的方法(简称并行方法): 函数用parallel修饰;
+
+        |条件|是否需要跨域调用|
+        | :---: | :---: |
+        |当前域和对象域相同时|否|
+        |调用的是并行方法时|否|
+        |当前域和对象域**不同**,且调用的**不是**并行方法时|是|
+
+* 跨域调用跨域对象的方法时会发生什么
+    * 引用类型(ValueType>ValueType.STRING的)的参数从调用域传入跨域对象的域时会被深度复制;
+    * 引用类型的返回值从跨域对象的域返回调用域时会被深度复制;
+        ```cpp title="ob.gs"
+        map _dbase = {};
+        public void set(map m, string path, int v)
+        {
+            m.express_set(path, v);
+            printf("ss: m=%O\n", m);
+        }
+
+        public void set_dbase(string path, int v)
+        {
+            _dbase.express_set(path, v);
+        }
+        public map get_dbase()
+        {
+            return _dbase;
+        }
+        ```
+        ```cpp title="test.gs"
+        import .ob;
+
+        public void test()
+        {
+            // 跨域时传入的引用类型参数自动进行了深度复制
+            map m = {};
+            m.express_set("a/b", 100);
+            printf("1: m=%O\n", m);
+
+            ob=>set(m, "a/b", 200);
+            printf("2: m=%O\n", m);
+
+            // 跨域时返回的引用类型返回值进行了深度复制
+            ob=>set_dbase("c/d", 300);
+            map dbase = ob=>get_dbase();
+            printf("11: dbase=%O\n", dbase);
+            dbase.express_set("c/d", 400);
+            printf("22: dbase=%O\n", dbase);
+            printf("33: dbase=%O\n", ob=>get_dbase());
+        }
+        ```
+        ```cpp
+        load_static("./test.gs", domain.create());
+        load_static("./ob.gs", domain.create());
+        test=>test();
+        ```
+        ```
+        输出结果在此:
+        Shell> test=>test()
+        1: m={ /* sizeof() == 1 */
+            "a" : { /* sizeof() == 1 */
+                "b" : 100,
+            },
+        }
+        ss: m={ /* sizeof() == 1 */
+            "a" : { /* sizeof() == 1 */
+                "b" : 200,
+            },
+        }
+        2: m={ /* sizeof() == 1 */
+            "a" : { /* sizeof() == 1 */
+                "b" : 100,
+            },
+        }
+        11: dbase={ /* sizeof() == 1 */
+            "c" : { /* sizeof() == 1 */
+                "d" : 300,
+            },
+        }
+        22: dbase={ /* sizeof() == 1 */
+            "c" : { /* sizeof() == 1 */
+                "d" : 400,
+            },
+        }
+        33: dbase={ /* sizeof() == 1 */
+            "c" : { /* sizeof() == 1 */
+                "d" : 300,
+            },
+        }
+        ```
+* 合并域操作
+    * 每一次跨域调用，调用协程都需要竞争域锁；当多个协程竞争同一个域锁时，一次只能有一个协程获得该域锁，未获得域锁的协程将被挂起，常说的域冲突指的就是这种情形；对同一个域频繁的跨域调用显然会加剧域冲突;
+    * 如何查看域冲突次数以及当前持有域锁的协程
+        * domain.info()返回信息中的"conflict"值就是本域已发生域冲突次数;
+        * domain.info()返回信息中的"running_coroutine"值是当前持有域锁的协程;
+    * 合并域操作可以明显的减少跨域调用的次数，减少域冲突，从而提高执行效率;以下的例子，合并域操作后的运行效率提升是相当明显的;
+        ```cpp title="d2.gs"
+        //
+        int _n = 0;
+
+        void create()
+        {
+        }
+
+        public void add()
+        {
+            _n = _n + 1;
+        }
+
+        public parallel int get_domain_conflict_times()
+        {
+            return this.get_domain().info()["conflict"];
+        }
+        ```
+        ```cpp
+        #pragma parallel
+
+        import gs.lang.*;
+
+        import .d2;
+
+        readonly int N := 500000;
+
+        public void test()
+        {
+            test_one();
+            test_two();
+        }
+
+        // 未合并域操作
+        public void test_one()
+        {
+            object ob = new_object(d2, domain.create());
+
+            sync_object sem = sync_object.create_semaphore();
+
+            // 其他协程等待域锁让出后执行
+            coroutine co1 = coroutine.create_in_thread("co1", domain.create(), (: co_entry,  ob, sem :));
+            coroutine co2 = coroutine.create_in_thread("co2", domain.create(), (: co_entry,  ob, sem :));
+            int t1 = time.time_ms();
+            sem.take();
+            sem.take();
+            int t2 = time.time_ms();
+            printf("case cost %d ms, conflict times: %d\n", t2 - t1, ob.get_domain_conflict_times());
+            ob.close();
+            sem.close();
+        }
+
+        void co_entry(object ob, sync_object sem)
+        {
+            // 未合并域操作
+            for (int i = 1 upto N)
+                ob=>add();
+            sem.give();
+        }
+
+        // 合并域操作
+        public void test_two()
+        {
+            object ob = new_object(d2, domain.create());
+
+            sync_object sem = sync_object.create_semaphore();
+
+            // 其他协程等待域锁让出后执行
+            coroutine co1 = coroutine.create_in_thread("co1", domain.create(), (: co_entry2,  ob, sem :));
+            coroutine co2 = coroutine.create_in_thread("co2", domain.create(), (: co_entry2,  ob, sem :));
+            int t1 = time.time_ms();
+            sem.take();
+            sem.take();
+            int t2 = time.time_ms();
+            printf("case cost %d ms, conflict times: %d\n", t2 - t1, ob.get_domain_conflict_times());
+            ob.close();
+            sem.close();
+        }
+
+        void co_entry2(object ob, sync_object sem)
+        {
+            // 合并域操作
+            function.call_in_domain(ob.get_domain(), () {
+                for (int i = 1 upto N)
+                    ob.add();
+            });
+            sem.give();
+        }
+        ```
+
+        ```cpp
+        import test;
+        test.test();
+        ```
+        ```
+        输出结果在此:
+        case cost 313 ms, conflict times: 954864
+        case cost 31 ms, conflict times: 1
+        ```
+    * 基于每次跨域都需要重新竞争域锁，合并后的域操作可以保证本次合并操作的原子性；避免因为未合并操作而出现的两次跨域调用之间对象状态变化引起的问题；以下例子，未合并域操作的失败次数是相当明显的，要保证操作的正确性，只能进行合并；
+        ```cpp title="d3.gs"
+        //
+        bool _good = false;
+        readonly int _failure := 0;
+
+        void create()
+        {
+        }
+
+        public void say()
+        {
+            // 把_good为false当做失败调用
+            if (! _good)
+                _failure := _failure + 1;
+        }
+
+        public void good()
+        {
+            _good = true;
+        }
+
+        public void no_good()
+        {
+            _good = false;
+        }
+
+        public parallel int get_failure_say_times()
+        {
+            return _failure;
+        }
+        ```
+        ```cpp
+        #pragma parallel
+
+        import gs.lang.*;
+
+        import .d3;
+
+        readonly int N := 10000;
+
+        public void test()
+        {
+            test_one();
+            test_two();
+        }
+
+        // 未合并域操作
+        public void test_one()
+        {
+            object ob = new_object(d3, domain.create());
+
+            sync_object sem = sync_object.create_semaphore();
+
+            // 其他协程等待域锁让出后执行
+            coroutine co1 = coroutine.create_in_thread("co1", domain.create(), (: co_entry_say, ob, sem :));
+            coroutine co2 = coroutine.create_in_thread("co2", domain.create(), (: co_entry_nogood, ob, sem :));
+            sem.take();
+            sem.take();
+            printf("case total say %d, failure times: %d\n", N, ob.get_failure_say_times());
+            ob.close();
+            sem.close();
+        }
+
+        void co_entry_say(object ob, sync_object sem)
+        {
+            for (int i = 1 upto N)
+            {
+                // 未合并域操作
+                ob=>good();
+                catch(ob=>say());
+
+                coroutine.sleep(0);
+            }
+            sem.give();
+        }
+
+        void co_entry_nogood(object ob, sync_object sem)
+        {
+            for (int i = 1 upto N)
+            {
+                ob=>no_good();
+                coroutine.sleep(0);
+            }
+
+            sem.give();
+        }
+
+        // 合并域操作
+        public void test_two()
+        {
+            object ob = new_object(d3, domain.create());
+
+            sync_object sem = sync_object.create_semaphore();
+
+            // 其他协程等待域锁让出后执行
+            coroutine co1 = coroutine.create_in_thread("co1", domain.create(), (: co_entry_say2,  ob, sem :));
+            coroutine co2 = coroutine.create_in_thread("co2", domain.create(), (: co_entry_nogood,  ob, sem :));
+            sem.take();
+            sem.take();
+            printf("case total say: %d, failure times: %d\n", N, ob.get_failure_say_times());
+            ob.close();
+            sem.close();
+        }
+
+        void co_entry_say2(object ob, sync_object sem)
+        {
+            for (int i = 1 upto N)
+            {
+                // 合并域操作
+                function.call_in_domain(ob.get_domain(), () {
+                    ob.good();
+                    ob.say();
+                });
+                coroutine.sleep(0);
+            }
+            sem.give();
+        }
+
+        ```
+        ```cpp
+        import test;
+        test.test();
+        ```
+        ```
+        输出结果在此:
+        case total say 10000, failure times: 3250
+        case total say: 10000, failure times: 0
+        ```
+    * try_lock域的示例
+        ```
+        void foo()
+        {
+            try_lock(this)
+            {
+                // 这中间任何跨域操作会报错
+            }
+        }
+        ```
+
+---
+
+### domain常用的外部函数
+
+下面列出domain类型一些常用的外部函数以及用法。
+
+export const domain_apis = [
+            {
+                "id": 1,
+                "proto": "domain domain.create(string name)",
+                "desc": "初始化域",
+                "usage": "static函数,创建一个指定名称的域,名称必须是唯一或者空字符串"
+            },
+            {
+                "id": 2,
+                "proto": "string domain.name()",
+                "desc": "域名",
+                "usage": "成员函数,获取域的名称"
+            },
+            {
+                "id": 3,
+                "proto": "mixed domain.find(string name)",
+                "desc": "查找域",
+                "usage": "static函数,根据名称查找域,handle的扩展类型一般情况下都有此方法"
+            },
+            {
+                "id": 4,
+                "proto": "array domain.get_all()",
+                "desc": "所有域",
+                "usage": "获取所有域,一般情况下在调试下使用,handle的扩展类型一般情况下都有此方法"
+            },
+            {
+                "id": 5,
+                "proto": "mixed domain.info()",
+                "desc": "域信息",
+                "usage": "获取域的信息,多为调试时使用,handle的扩展类型一般情况下都有此方法;"
+            },
+            {
+                "id": 6,
+                "proto": "domain system.core.this_domain()",
+                "desc": "当前域",
+                "usage": "**非常重要的函数**！获取调用栈所处的域"
+            },
+            {
+                "id": 7,
+                "proto": "bool domain.delete(handle/string id_or_name)",
+                "desc": "删除域",
+                "usage": "删除指定名称的域;更常使用close()方法关闭一个handle;"
+            }
+        ];
+
+<ExternalApiTable list={domain_apis} />
+
